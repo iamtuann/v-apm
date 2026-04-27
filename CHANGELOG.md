@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Replace `black` + `isort` with Ruff for linting and formatting; add deterministic CI lint gate (~3s), configure 10 rule sets with strangler-fig complexity thresholds, and fix a Python 3.10 f-string compatibility bug in `audit_report.py` -- by @sergio-sisternes-epam (#999)
+
 ## [0.10.0] - 2026-04-27
 
 ### Added
