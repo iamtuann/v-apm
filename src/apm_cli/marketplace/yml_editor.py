@@ -13,10 +13,10 @@ atomic-write-then-revalidate pattern:
 
 from __future__ import annotations
 
-import re
+import re  # noqa: F401
 from io import StringIO
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional  # noqa: F401, UP035
 
 from ruamel.yaml import YAML
 
@@ -27,8 +27,8 @@ from .yml_schema import SOURCE_RE, load_marketplace_yml
 
 __all__ = [
     "add_plugin_entry",
-    "update_plugin_entry",
     "remove_plugin_entry",
+    "update_plugin_entry",
 ]
 
 
@@ -86,17 +86,13 @@ def _find_entry_index(packages, name: str) -> int:
         entry_name = entry.get("name", "")
         if isinstance(entry_name, str) and entry_name.lower() == lower:
             return idx
-    raise MarketplaceYmlError(
-        f"Package '{name}' not found in marketplace.yml"
-    )
+    raise MarketplaceYmlError(f"Package '{name}' not found in marketplace.yml")
 
 
 def _validate_source(source: str) -> None:
     """Validate that *source* has ``owner/repo`` shape."""
     if not SOURCE_RE.match(source):
-        raise MarketplaceYmlError(
-            f"'source' must match '<owner>/<repo>' shape, got '{source}'"
-        )
+        raise MarketplaceYmlError(f"'source' must match '<owner>/<repo>' shape, got '{source}'")
     try:
         validate_path_segments(source, context="source")
     except PathTraversalError as exc:
@@ -120,12 +116,12 @@ def add_plugin_entry(
     yml_path: Path,
     *,
     source: str,
-    name: Optional[str] = None,
-    version: Optional[str] = None,
-    ref: Optional[str] = None,
-    subdir: Optional[str] = None,
-    tag_pattern: Optional[str] = None,
-    tags: Optional[List[str]] = None,
+    name: str | None = None,
+    version: str | None = None,
+    ref: str | None = None,
+    subdir: str | None = None,
+    tag_pattern: str | None = None,
+    tags: list[str] | None = None,
     include_prerelease: bool = False,
 ) -> str:
     """Append a new entry to ``packages[]``.
@@ -136,13 +132,9 @@ def add_plugin_entry(
     _validate_source(source)
 
     if version is not None and ref is not None:
-        raise MarketplaceYmlError(
-            "Cannot specify both 'version' and 'ref' -- pick one"
-        )
+        raise MarketplaceYmlError("Cannot specify both 'version' and 'ref' -- pick one")
     if version is None and ref is None:
-        raise MarketplaceYmlError(
-            "At least one of 'version' or 'ref' must be provided"
-        )
+        raise MarketplaceYmlError("At least one of 'version' or 'ref' must be provided")
 
     if subdir is not None:
         _validate_subdir(subdir)
@@ -165,9 +157,7 @@ def add_plugin_entry(
     for entry in packages:
         entry_name = entry.get("name", "")
         if isinstance(entry_name, str) and entry_name.lower() == lower:
-            raise MarketplaceYmlError(
-                f"Package '{name}' already exists in marketplace.yml"
-            )
+            raise MarketplaceYmlError(f"Package '{name}' already exists in marketplace.yml")
 
     # --- build entry mapping ---
     from ruamel.yaml.comments import CommentedMap
@@ -204,9 +194,7 @@ def update_plugin_entry(yml_path: Path, name: str, **fields) -> None:
     data, original_text = _load_rt(yml_path)
     packages = data.get("packages")
     if packages is None:
-        raise MarketplaceYmlError(
-            f"Package '{name}' not found in marketplace.yml"
-        )
+        raise MarketplaceYmlError(f"Package '{name}' not found in marketplace.yml")
 
     idx = _find_entry_index(packages, name)
     entry = packages[idx]
@@ -216,9 +204,7 @@ def update_plugin_entry(yml_path: Path, name: str, **fields) -> None:
     has_ref = "ref" in fields and fields["ref"] is not None
 
     if has_version and has_ref:
-        raise MarketplaceYmlError(
-            "Cannot specify both 'version' and 'ref' -- pick one"
-        )
+        raise MarketplaceYmlError("Cannot specify both 'version' and 'ref' -- pick one")
 
     if has_version:
         entry["version"] = fields["version"]
@@ -257,9 +243,7 @@ def remove_plugin_entry(yml_path: Path, name: str) -> None:
     data, original_text = _load_rt(yml_path)
     packages = data.get("packages")
     if packages is None:
-        raise MarketplaceYmlError(
-            f"Package '{name}' not found in marketplace.yml"
-        )
+        raise MarketplaceYmlError(f"Package '{name}' not found in marketplace.yml")
 
     idx = _find_entry_index(packages, name)
     del packages[idx]

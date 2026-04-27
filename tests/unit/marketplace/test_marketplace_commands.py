@@ -1,7 +1,7 @@
 """Tests for marketplace CLI commands using CliRunner."""
 
-import json
-from unittest.mock import MagicMock, patch
+import json  # noqa: F401
+from unittest.mock import MagicMock, patch  # noqa: F401
 
 import pytest
 from click.testing import CliRunner
@@ -116,9 +116,7 @@ class TestMarketplaceBrowse:
     def test_browse_shows_plugins(self, mock_get, mock_fetch, runner):
         from apm_cli.commands.marketplace import marketplace
 
-        mock_get.return_value = MarketplaceSource(
-            name="acme", owner="acme-org", repo="plugins"
-        )
+        mock_get.return_value = MarketplaceSource(name="acme", owner="acme-org", repo="plugins")
         mock_fetch.return_value = MarketplaceManifest(
             name="Acme",
             plugins=(
@@ -140,9 +138,7 @@ class TestMarketplaceUpdate:
     def test_update_single(self, mock_get, mock_clear, mock_fetch, runner):
         from apm_cli.commands.marketplace import marketplace
 
-        mock_get.return_value = MarketplaceSource(
-            name="acme", owner="acme-org", repo="plugins"
-        )
+        mock_get.return_value = MarketplaceSource(name="acme", owner="acme-org", repo="plugins")
         mock_fetch.return_value = MarketplaceManifest(
             name="Acme", plugins=(MarketplacePlugin(name="p1"),)
         )
@@ -160,9 +156,7 @@ class TestMarketplaceRemove:
     def test_remove_with_confirm(self, mock_get, mock_remove, mock_clear, runner):
         from apm_cli.commands.marketplace import marketplace
 
-        mock_get.return_value = MarketplaceSource(
-            name="acme", owner="acme-org", repo="plugins"
-        )
+        mock_get.return_value = MarketplaceSource(name="acme", owner="acme-org", repo="plugins")
         result = runner.invoke(marketplace, ["remove", "acme", "--yes"])
         assert result.exit_code == 0
         mock_remove.assert_called_once()
@@ -209,7 +203,10 @@ class TestSearch:
         from apm_cli.commands.marketplace import search
 
         mock_get.return_value = MarketplaceSource(
-            name="skills", owner="anthropics", repo="anthropics/skills", path=".claude-plugin/marketplace.json"
+            name="skills",
+            owner="anthropics",
+            repo="anthropics/skills",
+            path=".claude-plugin/marketplace.json",
         )
         mock_search.return_value = [
             MarketplacePlugin(
@@ -228,7 +225,10 @@ class TestSearch:
         from apm_cli.commands.marketplace import search
 
         mock_get.return_value = MarketplaceSource(
-            name="skills", owner="anthropics", repo="anthropics/skills", path=".claude-plugin/marketplace.json"
+            name="skills",
+            owner="anthropics",
+            repo="anthropics/skills",
+            path=".claude-plugin/marketplace.json",
         )
         mock_search.return_value = []
         result = runner.invoke(search, ["zzz-nonexistent@skills"])

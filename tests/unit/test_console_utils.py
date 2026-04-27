@@ -313,9 +313,7 @@ class TestCreateFilesTable:
     def test_list_tuple_items(self):
         from apm_cli.utils.console import _create_files_table
 
-        result = _create_files_table(
-            [["script.py", "A script"], ("config.yaml", "Config")]
-        )
+        result = _create_files_table([["script.py", "A script"], ("config.yaml", "Config")])
         assert result is not None
 
     def test_plain_string_items(self):

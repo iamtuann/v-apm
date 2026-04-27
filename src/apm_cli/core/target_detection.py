@@ -22,7 +22,7 @@ are accepted as aliases and map to the same internal value.
 """
 
 from pathlib import Path
-from typing import List, Literal, Optional, Tuple, Union
+from typing import List, Literal, Optional, Tuple, Union  # noqa: F401, UP035
 
 import click
 
@@ -30,21 +30,32 @@ import click
 TargetType = Literal["vscode", "claude", "cursor", "opencode", "codex", "gemini", "all", "minimal"]
 
 # User-facing target values (includes aliases accepted by CLI)
-UserTargetType = Literal["copilot", "vscode", "agents", "claude", "cursor", "opencode", "codex", "gemini", "all", "minimal"]
+UserTargetType = Literal[
+    "copilot",
+    "vscode",
+    "agents",
+    "claude",
+    "cursor",
+    "opencode",
+    "codex",
+    "gemini",
+    "all",
+    "minimal",
+]
 
 
-def detect_target(
+def detect_target(  # noqa: PLR0911
     project_root: Path,
-    explicit_target: Optional[str] = None,
-    config_target: Optional[str] = None,
-) -> Tuple[TargetType, str]:
+    explicit_target: str | None = None,
+    config_target: str | None = None,
+) -> tuple[TargetType, str]:
     """Detect the appropriate target for compilation and integration.
-    
+
     Args:
         project_root: Root directory of the project
         explicit_target: Explicitly provided --target flag value
         config_target: Target from apm.yml top-level 'target' field
-        
+
     Returns:
         Tuple of (target, reason) where:
         - target: The detected target type
@@ -83,7 +94,7 @@ def detect_target(
             return "gemini", "apm.yml target"
         elif config_target == "all":
             return "all", "apm.yml target"
-    
+
     # Priority 3: Auto-detect from existing folders
     github_exists = (project_root / ".github").exists()
     claude_exists = (project_root / ".claude").exists()
@@ -128,10 +139,10 @@ def should_compile_agents_md(target: TargetType) -> bool:
 
     AGENTS.md is generated for vscode, codex, gemini, all, and minimal
     targets.  Gemini needs it because GEMINI.md imports AGENTS.md.
-    
+
     Args:
         target: The detected or configured target
-        
+
     Returns:
         bool: True if AGENTS.md should be generated
     """
@@ -164,12 +175,12 @@ def should_compile_gemini_md(target: TargetType) -> bool:
 
 def get_target_description(target: UserTargetType) -> str:
     """Get a human-readable description of what will be generated for a target.
-    
+
     Accepts both internal target types and user-facing aliases.
-    
+
     Args:
         target: The target type (internal or user-facing alias)
-        
+
     Returns:
         str: Description of output files
     """
@@ -211,8 +222,8 @@ TARGET_ALIASES: dict[str, str] = {
 
 
 def normalize_target_list(
-    value: Union[str, List[str], None],
-) -> Optional[List[str]]:
+    value: str | list[str] | None,
+) -> list[str] | None:
     """Normalize a user-provided target value to a list of canonical names.
 
     Handles:
@@ -233,7 +244,7 @@ def normalize_target_list(
     if value is None:
         return None
 
-    raw: List[str] = [value] if isinstance(value, str) else list(value)
+    raw: list[str] = [value] if isinstance(value, str) else list(value)
 
     # "all" anywhere in the input means "every target" -- expand to the
     # full sorted list of canonical targets.
@@ -241,7 +252,7 @@ def normalize_target_list(
         return sorted(ALL_CANONICAL_TARGETS)
 
     seen: set[str] = set()
-    result: List[str] = []
+    result: list[str] = []
     for item in raw:
         canonical = TARGET_ALIASES.get(item, item)
         if canonical not in seen:
@@ -280,10 +291,10 @@ class TargetParamType(click.ParamType):
 
     def convert(
         self,
-        value: Union[str, List[str], None],
-        param: Optional[click.Parameter],
-        ctx: Optional[click.Context],
-    ) -> Union[str, List[str], None]:
+        value: str | list[str] | None,
+        param: click.Parameter | None,
+        ctx: click.Context | None,
+    ) -> str | list[str] | None:
         if value is None:
             return None
         # If already converted (e.g. from a default), pass through.
@@ -321,7 +332,7 @@ class TargetParamType(click.ParamType):
 
         # Multi-target: resolve aliases and deduplicate.
         seen: set[str] = set()
-        result: List[str] = []
+        result: list[str] = []
         for p in parts:
             canonical = TARGET_ALIASES.get(p, p)
             if canonical not in seen:

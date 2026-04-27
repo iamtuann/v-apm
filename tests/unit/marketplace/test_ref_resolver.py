@@ -17,7 +17,6 @@ from apm_cli.marketplace.ref_resolver import (
     _redact_token,
 )
 
-
 # ---------------------------------------------------------------------------
 # _parse_ls_remote_output
 # ---------------------------------------------------------------------------
@@ -60,11 +59,7 @@ class TestParseLsRemoteOutput:
         assert len(refs) == 0
 
     def test_blank_lines_skipped(self) -> None:
-        output = (
-            "\n"
-            "aaaa23456789abcdef1234567890abcdef123456\trefs/tags/v1.0.0\n"
-            "\n"
-        )
+        output = "\naaaa23456789abcdef1234567890abcdef123456\trefs/tags/v1.0.0\n\n"
         refs = _parse_ls_remote_output(output)
         assert len(refs) == 1
 
@@ -104,10 +99,7 @@ class TestRedactToken:
         assert _redact_token(text) == text
 
     def test_multiple_tokens_redacted(self) -> None:
-        text = (
-            "https://user:pass1@github.com/a/b "
-            "https://user:pass2@github.com/c/d"
-        )
+        text = "https://user:pass1@github.com/a/b https://user:pass2@github.com/c/d"
         result = _redact_token(text)
         assert "pass1" not in result
         assert "pass2" not in result
@@ -183,9 +175,7 @@ _SHA_B = "b" * 40
 _SHA_C = "c" * 40
 
 _MOCK_LS_REMOTE_OUTPUT = (
-    f"{_SHA_A}\trefs/tags/v1.0.0\n"
-    f"{_SHA_B}\trefs/tags/v2.0.0\n"
-    f"{_SHA_C}\trefs/heads/main\n"
+    f"{_SHA_A}\trefs/tags/v1.0.0\n{_SHA_B}\trefs/tags/v2.0.0\n{_SHA_C}\trefs/heads/main\n"
 )
 
 
@@ -318,7 +308,10 @@ class TestRefResolver:
         resolver.list_remote_refs("acme/tools")
         args, kwargs = mock_run.call_args
         assert args[0] == [
-            "git", "ls-remote", "--tags", "--heads",
+            "git",
+            "ls-remote",
+            "--tags",
+            "--heads",
             "https://github.com/acme/tools.git",
         ]
         assert kwargs["timeout"] == 7.5
@@ -361,9 +354,10 @@ class TestResolveRefSha:
         sha = resolver.resolve_ref_sha("acme/tools", ref="main")
         assert sha == _SHA_B
         # Verify command uses the ref directly (no --tags --heads).
-        args, kwargs = mock_run.call_args
+        args, kwargs = mock_run.call_args  # noqa: RUF059
         assert args[0] == [
-            "git", "ls-remote",
+            "git",
+            "ls-remote",
             "https://github.com/acme/tools.git",
             "main",
         ]
@@ -496,7 +490,5 @@ class TestGitTerminalPromptSuppression:
 
         _, kwargs = mock_run.call_args
         env = kwargs.get("env", {})
-        assert env.get("GIT_ASKPASS") == "echo", (
-            "subprocess.run must pass GIT_ASKPASS=echo in env"
-        )
+        assert env.get("GIT_ASKPASS") == "echo", "subprocess.run must pass GIT_ASKPASS=echo in env"
         resolver.close()

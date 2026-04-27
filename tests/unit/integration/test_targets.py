@@ -1,10 +1,10 @@
 """Tests for active_targets() resolution in targets.py."""
 
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
 
-from apm_cli.integration.targets import active_targets, KNOWN_TARGETS
+from apm_cli.integration.targets import KNOWN_TARGETS, active_targets
 
 
 class TestActiveTargets:
@@ -198,9 +198,7 @@ class TestActiveTargets:
 
     def test_explicit_list_preserves_order(self):
         """Result order matches input order."""
-        targets = active_targets(
-            self.root, explicit_target=["cursor", "claude", "copilot"]
-        )
+        targets = active_targets(self.root, explicit_target=["cursor", "claude", "copilot"])
         assert [t.name for t in targets] == ["cursor", "claude", "copilot"]
 
     def test_explicit_list_codex_at_project_scope(self):

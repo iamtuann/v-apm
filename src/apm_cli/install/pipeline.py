@@ -23,13 +23,13 @@ from __future__ import annotations
 
 import builtins
 import sys
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional  # noqa: F401, UP035
 
 from ..models.results import InstallResult
 from ..utils.console import _rich_error
 from ..utils.diagnostics import DiagnosticCollector
 from ..utils.path_security import PathTraversalError
-from .errors import DirectDependencyError, PolicyViolationError
+from .errors import DirectDependencyError, PolicyViolationError  # noqa: F401
 
 if TYPE_CHECKING:
     from ..core.auth import AuthResolver
@@ -44,24 +44,24 @@ list = builtins.list
 dict = builtins.dict
 
 
-def run_install_pipeline(
-    apm_package: "APMPackage",
+def run_install_pipeline(  # noqa: PLR0913
+    apm_package: APMPackage,
     update_refs: bool = False,
     verbose: bool = False,
-    only_packages: "builtins.list" = None,
+    only_packages: builtins.list = None,  # noqa: RUF013
     force: bool = False,
     parallel_downloads: int = 4,
-    logger: "InstallLogger" = None,
+    logger: InstallLogger = None,
     scope=None,
-    auth_resolver: "AuthResolver" = None,
-    target: str = None,
+    auth_resolver: AuthResolver = None,
+    target: str = None,  # noqa: RUF013
     allow_insecure: bool = False,
     allow_insecure_hosts=(),
     marketplace_provenance: dict = None,
     protocol_pref=None,
-    allow_protocol_fallback: "Optional[bool]" = None,
+    allow_protocol_fallback: bool | None = None,
     no_policy: bool = False,
-    skill_subset: "Optional[tuple]" = None,
+    skill_subset: tuple | None = None,
     skill_subset_from_cli: bool = False,
 ):
     """Install APM package dependencies.
@@ -96,11 +96,11 @@ def run_install_pipeline(
     # already prevents callers from reaching here when deps are missing, but
     # keep the check as a defensive belt-and-suspenders measure.
     try:
-        from ..deps.lockfile import LockFile, get_lockfile_path  # noqa: F401
+        from ..deps.lockfile import LockFile, get_lockfile_path
     except ImportError:
         raise RuntimeError("APM dependency system not available")
 
-    from ..core.scope import InstallScope, get_deploy_root, get_apm_dir
+    from ..core.scope import InstallScope, get_apm_dir, get_deploy_root
 
     if scope is None:
         scope = InstallScope.PROJECT
@@ -238,11 +238,11 @@ def run_install_pipeline(
             diagnostics.error(fail_msg, package=dep_display)
 
         # Collect installed packages for lockfile generation
-        from ..deps.lockfile import LockFile, get_lockfile_path
         from ..deps.installed_package import InstalledPackage
+        from ..deps.lockfile import LockFile, get_lockfile_path
         from ..deps.registry_proxy import RegistryConfig
 
-        installed_packages: List[InstalledPackage] = []
+        installed_packages: builtins.list[InstalledPackage] = []
 
         # Resolve registry proxy configuration once for this install session.
         registry_config = RegistryConfig.from_env()
@@ -333,8 +333,7 @@ def run_install_pipeline(
             if ctx.diagnostics and ctx.diagnostics.has_diagnostics:
                 ctx.diagnostics.render_summary()
             raise DirectDependencyError(
-                "One or more direct dependencies failed validation. "
-                "Run with --verbose for details."
+                "One or more direct dependencies failed validation. Run with --verbose for details."
             )
 
         # Update .gitignore

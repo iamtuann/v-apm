@@ -1,25 +1,25 @@
 """APM dependency management CLI commands."""
 
-import sys
 import shutil
-import click
+import sys
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional  # noqa: F401, UP035
+
+import click
 
 # Import existing APM components
-from ...constants import APM_DIR, APM_MODULES_DIR, APM_YML_FILENAME, SKILL_MD_FILENAME
-from ...models.apm_package import APMPackage, ValidationResult, validate_apm_package
+from ...constants import APM_DIR, APM_MODULES_DIR, APM_YML_FILENAME, SKILL_MD_FILENAME  # noqa: F401
 from ...core.command_logger import CommandLogger
 from ...core.target_detection import TargetParamType
-
+from ...models.apm_package import APMPackage, ValidationResult, validate_apm_package  # noqa: F401
 from ._utils import (
-    _is_nested_under_package,
+    _count_package_files,  # noqa: F401
     _count_primitives,
-    _count_package_files,
-    _count_workflows,
-    _get_detailed_context_counts,
+    _count_workflows,  # noqa: F401
+    _get_detailed_context_counts,  # noqa: F401
+    _get_detailed_package_info,  # noqa: F401
     _get_package_display_info,
-    _get_detailed_package_info,
+    _is_nested_under_package,
 )
 
 
@@ -53,15 +53,17 @@ def _show_scope_deps(scope_label, apm_dir, logger, console, has_rich, insecure_o
             project_package = APMPackage.from_apm_yml(apm_yml_path)
             for dep in project_package.get_apm_dependencies():
                 # Build the expected installed package name
-                repo_parts = dep.repo_url.split('/')
-                source = 'azure-devops' if dep.is_azure_devops() else 'github'
+                repo_parts = dep.repo_url.split("/")
+                source = "azure-devops" if dep.is_azure_devops() else "github"
                 is_ado = dep.is_azure_devops() and len(repo_parts) >= 3
                 is_gh = len(repo_parts) >= 2
 
                 if not dep.is_virtual:
                     # Regular package: use full repo_url path
                     if is_ado:
-                        declared_sources[f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}"] = source
+                        declared_sources[f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}"] = (
+                            source
+                        )
                     elif is_gh:
                         declared_sources[f"{repo_parts[0]}/{repo_parts[1]}"] = source
                     continue
@@ -73,9 +75,9 @@ def _show_scope_deps(scope_label, apm_dir, logger, console, has_rich, insecure_o
                             f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}/{dep.virtual_path}"
                         ] = source
                     elif is_gh:
-                        declared_sources[
-                            f"{repo_parts[0]}/{repo_parts[1]}/{dep.virtual_path}"
-                        ] = source
+                        declared_sources[f"{repo_parts[0]}/{repo_parts[1]}/{dep.virtual_path}"] = (
+                            source
+                        )
                     continue
 
                 # Virtual file/collection packages are flattened.
@@ -96,7 +98,7 @@ def _show_scope_deps(scope_label, apm_dir, logger, console, has_rich, insecure_o
                 # Lockfile keys match declared_sources format (owner/repo)
                 dep_key = dep.get_unique_key()
                 if dep_key and dep_key not in declared_sources:
-                    declared_sources[dep_key] = 'github'
+                    declared_sources[dep_key] = "github"
                 if getattr(dep, "is_insecure", False):
                     insecure_lock_deps[dep_key] = dep
     except Exception:
@@ -108,7 +110,7 @@ def _show_scope_deps(scope_label, apm_dir, logger, console, has_rich, insecure_o
     installed_packages = []
     orphaned_packages = []
     for candidate in apm_modules_path.rglob("*"):
-        if not candidate.is_dir() or candidate.name.startswith('.'):
+        if not candidate.is_dir() or candidate.name.startswith("."):
             continue
         has_apm_yml = (candidate / APM_YML_FILENAME).exists()
         has_skill_md = (candidate / SKILL_MD_FILENAME).exists()
@@ -120,19 +122,23 @@ def _show_scope_deps(scope_label, apm_dir, logger, console, has_rich, insecure_o
         org_repo_name = "/".join(rel_parts)
 
         # Skip sub-skills inside .apm/ directories -- they belong to the parent package
-        if '.apm' in rel_parts:
+        if ".apm" in rel_parts:
             continue
 
         # Skip skill sub-dirs nested inside another package (e.g. plugin
         # skills/ directories that are deployment artifacts, not packages).
-        if has_skill_md and not has_apm_yml and _is_nested_under_package(candidate, apm_modules_path):
+        if (
+            has_skill_md
+            and not has_apm_yml
+            and _is_nested_under_package(candidate, apm_modules_path)
+        ):
             continue
 
         try:
-            version = 'unknown'
+            version = "unknown"
             if has_apm_yml:
                 package = APMPackage.from_apm_yml(candidate / APM_YML_FILENAME)
-                version = package.version or 'unknown'
+                version = package.version or "unknown"
             primitives = _count_primitives(candidate)
 
             is_orphaned = org_repo_name not in declared_sources
@@ -140,23 +146,29 @@ def _show_scope_deps(scope_label, apm_dir, logger, console, has_rich, insecure_o
                 orphaned_packages.append(org_repo_name)
 
             locked_dep = insecure_lock_deps.get(org_repo_name)
-            installed_packages.append({
-                'name': org_repo_name,
-                'version': version,
-                'source': 'orphaned' if is_orphaned else declared_sources.get(org_repo_name, 'github'),
-                'primitives': primitives,
-                'path': str(candidate),
-                'is_orphaned': is_orphaned,
-                'is_insecure': locked_dep is not None,
-                'insecure_via': (
-                    f"via {locked_dep.resolved_by}" if locked_dep and locked_dep.resolved_by else "direct"
-                ),
-            })
+            installed_packages.append(
+                {
+                    "name": org_repo_name,
+                    "version": version,
+                    "source": "orphaned"
+                    if is_orphaned
+                    else declared_sources.get(org_repo_name, "github"),
+                    "primitives": primitives,
+                    "path": str(candidate),
+                    "is_orphaned": is_orphaned,
+                    "is_insecure": locked_dep is not None,
+                    "insecure_via": (
+                        f"via {locked_dep.resolved_by}"
+                        if locked_dep and locked_dep.resolved_by
+                        else "direct"
+                    ),
+                }
+            )
         except Exception as e:
             logger.warning(f"Failed to read package {org_repo_name}: {e}")
 
     if insecure_only:
-        installed_packages = [pkg for pkg in installed_packages if pkg['is_insecure']]
+        installed_packages = [pkg for pkg in installed_packages if pkg["is_insecure"]]
 
     if not installed_packages:
         if insecure_only:
@@ -192,24 +204,27 @@ def _show_scope_deps(scope_label, apm_dir, logger, console, has_rich, insecure_o
         table.add_column("Hooks", style="red", justify="center")
 
         for pkg in installed_packages:
-            p = pkg['primitives']
+            p = pkg["primitives"]
             table.add_row(
-                pkg['name'],
-                pkg['version'],
-                pkg['source'],
-                *([pkg['insecure_via']] if insecure_only else []),
-                str(p.get('prompts', 0)) if p.get('prompts', 0) > 0 else "-",
-                str(p.get('instructions', 0)) if p.get('instructions', 0) > 0 else "-",
-                str(p.get('agents', 0)) if p.get('agents', 0) > 0 else "-",
-                str(p.get('skills', 0)) if p.get('skills', 0) > 0 else "-",
-                str(p.get('hooks', 0)) if p.get('hooks', 0) > 0 else "-",
+                pkg["name"],
+                pkg["version"],
+                pkg["source"],
+                *([pkg["insecure_via"]] if insecure_only else []),
+                str(p.get("prompts", 0)) if p.get("prompts", 0) > 0 else "-",
+                str(p.get("instructions", 0)) if p.get("instructions", 0) > 0 else "-",
+                str(p.get("agents", 0)) if p.get("agents", 0) > 0 else "-",
+                str(p.get("skills", 0)) if p.get("skills", 0) > 0 else "-",
+                str(p.get("hooks", 0)) if p.get("hooks", 0) > 0 else "-",
             )
 
         console.print(table)
 
         # Show orphaned packages warning
         if orphaned_packages:
-            console.print(f"\n[!]  {len(orphaned_packages)} orphaned package(s) found (not in apm.yml):", style="yellow")
+            console.print(
+                f"\n[!]  {len(orphaned_packages)} orphaned package(s) found (not in apm.yml):",
+                style="yellow",
+            )
             for pkg in orphaned_packages:
                 console.print(f"  * {pkg}", style="dim yellow")
             console.print("\n Run 'apm prune' to remove orphaned packages", style="cyan")
@@ -224,51 +239,75 @@ def _show_scope_deps(scope_label, apm_dir, logger, console, has_rich, insecure_o
             click.echo("-" * 117)
         else:
             click.echo(f" APM Dependencies ({scope_label}):")
-            click.echo(f"{'Package':<30} {'Version':<10} {'Source':<12} {'Prompts':>7} {'Instr':>7} {'Agents':>7} {'Skills':>7} {'Hooks':>7}")
+            click.echo(
+                f"{'Package':<30} {'Version':<10} {'Source':<12} {'Prompts':>7} {'Instr':>7} {'Agents':>7} {'Skills':>7} {'Hooks':>7}"
+            )
             click.echo("-" * 98)
 
         for pkg in installed_packages:
-            p = pkg['primitives']
-            name = pkg['name'][:28]
-            version = pkg['version'][:8]
-            source = pkg['source'][:10]
-            insecure_via = pkg['insecure_via'][:16]
-            prompts = str(p.get('prompts', 0)) if p.get('prompts', 0) > 0 else "-"
-            instructions = str(p.get('instructions', 0)) if p.get('instructions', 0) > 0 else "-"
-            agents = str(p.get('agents', 0)) if p.get('agents', 0) > 0 else "-"
-            skills = str(p.get('skills', 0)) if p.get('skills', 0) > 0 else "-"
-            hooks = str(p.get('hooks', 0)) if p.get('hooks', 0) > 0 else "-"
+            p = pkg["primitives"]
+            name = pkg["name"][:28]
+            version = pkg["version"][:8]
+            source = pkg["source"][:10]
+            insecure_via = pkg["insecure_via"][:16]
+            prompts = str(p.get("prompts", 0)) if p.get("prompts", 0) > 0 else "-"
+            instructions = str(p.get("instructions", 0)) if p.get("instructions", 0) > 0 else "-"
+            agents = str(p.get("agents", 0)) if p.get("agents", 0) > 0 else "-"
+            skills = str(p.get("skills", 0)) if p.get("skills", 0) > 0 else "-"
+            hooks = str(p.get("hooks", 0)) if p.get("hooks", 0) > 0 else "-"
             if insecure_only:
                 click.echo(
                     f"{name:<30} {version:<10} {source:<12} {insecure_via:<18} "
                     f"{prompts:>7} {instructions:>7} {agents:>7} {skills:>7} {hooks:>7}"
                 )
             else:
-                click.echo(f"{name:<30} {version:<10} {source:<12} {prompts:>7} {instructions:>7} {agents:>7} {skills:>7} {hooks:>7}")
+                click.echo(
+                    f"{name:<30} {version:<10} {source:<12} {prompts:>7} {instructions:>7} {agents:>7} {skills:>7} {hooks:>7}"
+                )
 
         # Show orphaned packages warning
         if orphaned_packages:
-            click.echo(f"\n[!]  {len(orphaned_packages)} orphaned package(s) found (not in apm.yml):")
+            click.echo(
+                f"\n[!]  {len(orphaned_packages)} orphaned package(s) found (not in apm.yml):"
+            )
             for pkg in orphaned_packages:
                 click.echo(f"  * {pkg}")
             click.echo("\n Run 'apm prune' to remove orphaned packages")
 
 
 @deps.command(name="list", help="List installed APM dependencies")
-@click.option("--global", "-g", "global_", is_flag=True, default=False,
-              help="List user-scope dependencies (~/.apm/) instead of project")
-@click.option("--all", "show_all", is_flag=True, default=False,
-              help="Show both project and user-scope dependencies")
-@click.option("--insecure", "insecure_only", is_flag=True, default=False,
-              help="Show only installed dependencies locked to http:// sources")
+@click.option(
+    "--global",
+    "-g",
+    "global_",
+    is_flag=True,
+    default=False,
+    help="List user-scope dependencies (~/.apm/) instead of project",
+)
+@click.option(
+    "--all",
+    "show_all",
+    is_flag=True,
+    default=False,
+    help="Show both project and user-scope dependencies",
+)
+@click.option(
+    "--insecure",
+    "insecure_only",
+    is_flag=True,
+    default=False,
+    help="Show only installed dependencies locked to http:// sources",
+)
 def list_packages(global_, show_all, insecure_only):
     """Show all installed APM dependencies with context files and agent workflows."""
     logger = CommandLogger("deps-list")
 
     try:
         # Import Rich components with fallback
-        from rich.console import Console
         import shutil
+
+        from rich.console import Console
+
         term_width = shutil.get_terminal_size((120, 24)).columns
         console = Console(width=max(120, term_width))
         has_rich = True
@@ -281,30 +320,65 @@ def list_packages(global_, show_all, insecure_only):
 
         if show_all:
             # Show both scopes
-            _show_scope_deps("Project", get_apm_dir(InstallScope.PROJECT), logger, console, has_rich, insecure_only=insecure_only)
+            _show_scope_deps(
+                "Project",
+                get_apm_dir(InstallScope.PROJECT),
+                logger,
+                console,
+                has_rich,
+                insecure_only=insecure_only,
+            )
             if console and has_rich:
                 console.print()  # spacing between tables
-            _show_scope_deps("Global", get_apm_dir(InstallScope.USER), logger, console, has_rich, insecure_only=insecure_only)
+            _show_scope_deps(
+                "Global",
+                get_apm_dir(InstallScope.USER),
+                logger,
+                console,
+                has_rich,
+                insecure_only=insecure_only,
+            )
         elif global_:
-            _show_scope_deps("Global", get_apm_dir(InstallScope.USER), logger, console, has_rich, insecure_only=insecure_only)
+            _show_scope_deps(
+                "Global",
+                get_apm_dir(InstallScope.USER),
+                logger,
+                console,
+                has_rich,
+                insecure_only=insecure_only,
+            )
         else:
-            _show_scope_deps("Project", get_apm_dir(InstallScope.PROJECT), logger, console, has_rich, insecure_only=insecure_only)
+            _show_scope_deps(
+                "Project",
+                get_apm_dir(InstallScope.PROJECT),
+                logger,
+                console,
+                has_rich,
+                insecure_only=insecure_only,
+            )
     except Exception as e:
         logger.error(f"Error listing dependencies: {e}")
         sys.exit(1)
 
 
 @deps.command(help="Show dependency tree structure")
-@click.option("--global", "-g", "global_", is_flag=True, default=False,
-              help="Show user-scope dependency tree (~/.apm/)")
+@click.option(
+    "--global",
+    "-g",
+    "global_",
+    is_flag=True,
+    default=False,
+    help="Show user-scope dependency tree (~/.apm/)",
+)
 def tree(global_):
     """Display dependencies in hierarchical tree format using lockfile."""
     logger = CommandLogger("deps-tree")
 
     try:
         # Import Rich components with fallback
-        from rich.tree import Tree
         from rich.console import Console
+        from rich.tree import Tree
+
         console = Console()
         has_rich = True
     except ImportError:
@@ -313,9 +387,10 @@ def tree(global_):
 
     try:
         from ...core.scope import InstallScope, get_apm_dir
+
         scope = InstallScope.USER if global_ else InstallScope.PROJECT
         apm_dir = get_apm_dir(scope)
-        project_root = apm_dir
+        project_root = apm_dir  # noqa: F841
         apm_modules_path = apm_dir / APM_MODULES_DIR
 
         # Load project info
@@ -332,6 +407,7 @@ def tree(global_):
         lockfile_deps = None
         try:
             from ...deps.lockfile import LockFile, get_lockfile_path
+
             lockfile_path = get_lockfile_path(apm_dir)
             if lockfile_path.exists():
                 lockfile = LockFile.read(lockfile_path)
@@ -339,27 +415,32 @@ def tree(global_):
                     lockfile_deps = lockfile.get_package_dependencies()
         except Exception:
             pass
-        
+
         if lockfile_deps:
             # Build tree from lockfile (accurate depth + parent info)
             # Separate direct (depth=1) from transitive (depth>1)
             direct = [d for d in lockfile_deps if d.depth <= 1]
             transitive = [d for d in lockfile_deps if d.depth > 1]
-            
+
             # Build parent->children map
-            children_map: Dict[str, list] = {}
+            children_map: dict[str, list] = {}
             for dep in transitive:
                 parent_key = dep.resolved_by or ""
                 if parent_key not in children_map:
                     children_map[parent_key] = []
                 children_map[parent_key].append(dep)
-            
+
             def _dep_display_name(dep) -> str:
                 """Get display name for a locked dependency."""
                 key = dep.get_unique_key()
-                version = dep.version or (dep.resolved_commit[:7] if dep.resolved_commit else None) or dep.resolved_ref or "latest"
+                version = (
+                    dep.version
+                    or (dep.resolved_commit[:7] if dep.resolved_commit else None)
+                    or dep.resolved_ref
+                    or "latest"
+                )
                 return f"{key}@{version}"
-            
+
             def _add_children(parent_branch, parent_repo_url, depth=0):
                 """Recursively add transitive deps as nested children."""
                 kids = children_map.get(parent_repo_url, [])
@@ -371,10 +452,10 @@ def tree(global_):
                         child_branch = child_name
                     if depth < 5:  # Prevent infinite recursion
                         _add_children(child_branch, child_dep.repo_url, depth + 1)
-            
+
             if has_rich:
                 root_tree = Tree(f"[bold cyan]{project_name}[/bold cyan] (local)")
-                
+
                 if not direct:
                     root_tree.add("[dim]No dependencies installed[/dim]")
                 else:
@@ -384,7 +465,7 @@ def tree(global_):
                         install_key = dep.get_unique_key()
                         install_path = apm_modules_path / install_key
                         branch = root_tree.add(f"[green]{display}[/green]")
-                        
+
                         if install_path.exists():
                             primitives = _count_primitives(install_path)
                             prim_parts = []
@@ -393,14 +474,14 @@ def tree(global_):
                                     prim_parts.append(f"{count} {ptype}")
                             if prim_parts:
                                 branch.add(f"[dim]{', '.join(prim_parts)}[/dim]")
-                        
+
                         # Add transitive deps as nested children
                         _add_children(branch, dep.repo_url)
-                
+
                 console.print(root_tree)
             else:
                 click.echo(f"{project_name} (local)")
-                
+
                 if not direct:
                     click.echo("+-- No dependencies installed")
                 else:
@@ -409,7 +490,7 @@ def tree(global_):
                         prefix = "+-- " if is_last else "|-- "
                         display = _dep_display_name(dep)
                         click.echo(f"{prefix}{display}")
-                        
+
                         # Show transitive deps
                         kids = children_map.get(dep.repo_url, [])
                         sub_prefix = "    " if is_last else "|   "
@@ -417,44 +498,47 @@ def tree(global_):
                             child_is_last = j == len(kids) - 1
                             child_prefix = "+-- " if child_is_last else "|-- "
                             click.echo(f"{sub_prefix}{child_prefix}{_dep_display_name(child)}")
-        else:
-            # Fallback: scan apm_modules directory (no lockfile)
-            if has_rich:
-                root_tree = Tree(f"[bold cyan]{project_name}[/bold cyan] (local)")
-                
-                if not apm_modules_path.exists():
-                    root_tree.add("[dim]No dependencies installed[/dim]")
-                else:
-                    for candidate in sorted(apm_modules_path.rglob("*")):
-                        if not candidate.is_dir() or candidate.name.startswith('.'):
-                            continue
-                        has_apm = (candidate / APM_YML_FILENAME).exists()
-                        has_skill = (candidate / SKILL_MD_FILENAME).exists()
-                        if not has_apm and not has_skill:
-                            continue
-                        rel_parts = candidate.relative_to(apm_modules_path).parts
-                        if len(rel_parts) < 2:
-                            continue
-                        if '.apm' in rel_parts:
-                            continue
-                        if has_skill and not has_apm and _is_nested_under_package(candidate, apm_modules_path):
-                            continue
-                        display = "/".join(rel_parts)
-                        info = _get_package_display_info(candidate)
-                        branch = root_tree.add(f"[green]{info['display_name']}[/green]")
-                        primitives = _count_primitives(candidate)
-                        prim_parts = []
-                        for ptype, count in primitives.items():
-                            if count > 0:
-                                prim_parts.append(f"{count} {ptype}")
-                        if prim_parts:
-                            branch.add(f"[dim]{', '.join(prim_parts)}[/dim]")
-                
-                console.print(root_tree)
+        # Fallback: scan apm_modules directory (no lockfile)
+        elif has_rich:
+            root_tree = Tree(f"[bold cyan]{project_name}[/bold cyan] (local)")
+
+            if not apm_modules_path.exists():
+                root_tree.add("[dim]No dependencies installed[/dim]")
             else:
-                click.echo(f"{project_name} (local)")
-                if not apm_modules_path.exists():
-                    click.echo("+-- No dependencies installed")
+                for candidate in sorted(apm_modules_path.rglob("*")):
+                    if not candidate.is_dir() or candidate.name.startswith("."):
+                        continue
+                    has_apm = (candidate / APM_YML_FILENAME).exists()
+                    has_skill = (candidate / SKILL_MD_FILENAME).exists()
+                    if not has_apm and not has_skill:
+                        continue
+                    rel_parts = candidate.relative_to(apm_modules_path).parts
+                    if len(rel_parts) < 2:
+                        continue
+                    if ".apm" in rel_parts:
+                        continue
+                    if (
+                        has_skill
+                        and not has_apm
+                        and _is_nested_under_package(candidate, apm_modules_path)
+                    ):
+                        continue
+                    display = "/".join(rel_parts)
+                    info = _get_package_display_info(candidate)
+                    branch = root_tree.add(f"[green]{info['display_name']}[/green]")
+                    primitives = _count_primitives(candidate)
+                    prim_parts = []
+                    for ptype, count in primitives.items():
+                        if count > 0:
+                            prim_parts.append(f"{count} {ptype}")
+                    if prim_parts:
+                        branch.add(f"[dim]{', '.join(prim_parts)}[/dim]")
+
+            console.print(root_tree)
+        else:
+            click.echo(f"{project_name} (local)")
+            if not apm_modules_path.exists():
+                click.echo("+-- No dependencies installed")
 
     except Exception as e:
         logger.error(f"Error showing dependency tree: {e}")
@@ -462,7 +546,9 @@ def tree(global_):
 
 
 @deps.command(help="Remove all APM dependencies")
-@click.option("--dry-run", is_flag=True, default=False, help="Show what would be removed without removing")
+@click.option(
+    "--dry-run", is_flag=True, default=False, help="Show what would be removed without removing"
+)
 @click.option("--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt")
 def clean(dry_run: bool, yes: bool):
     """Remove entire apm_modules/ directory."""
@@ -470,36 +556,40 @@ def clean(dry_run: bool, yes: bool):
 
     project_root = Path(".")
     apm_modules_path = project_root / APM_MODULES_DIR
-    
+
     if not apm_modules_path.exists():
         logger.progress("No apm_modules/ directory found - already clean")
         return
-    
+
     # Count actual installed packages (not just top-level dirs like org namespaces or _local)
     from ._utils import _scan_installed_packages
+
     packages = _scan_installed_packages(apm_modules_path)
     package_count = len(packages)
-    
+
     if dry_run:
         logger.progress(f"Dry run: would remove apm_modules/ ({package_count} package(s))")
         for pkg in sorted(packages):
             logger.progress(f"  - {pkg}")
         return
-    
-    logger.warning(f"This will remove the entire apm_modules/ directory ({package_count} package(s))")
-    
+
+    logger.warning(
+        f"This will remove the entire apm_modules/ directory ({package_count} package(s))"
+    )
+
     # Confirmation prompt (skip if --yes provided)
     if not yes:
         try:
             from rich.prompt import Confirm
+
             confirm = Confirm.ask("Continue?")
         except ImportError:
             confirm = click.confirm("Continue?")
-        
+
         if not confirm:
             logger.progress("Operation cancelled")
             return
-    
+
     try:
         shutil.rmtree(apm_modules_path)
         logger.success("Successfully removed apm_modules/ directory")
@@ -512,11 +602,13 @@ def clean(dry_run: bool, yes: bool):
 @click.argument("packages", nargs=-1)
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed update information")
 @click.option(
-    "--force", is_flag=True,
+    "--force",
+    is_flag=True,
     help="Overwrite locally-authored files on collision",
 )
 @click.option(
-    "--target", "-t",
+    "--target",
+    "-t",
     type=TargetParamType(),
     default=None,
     help="Target platform (comma-separated for multiple, e.g. claude,copilot). Use 'all' for every target. Overrides auto-detection.",
@@ -528,8 +620,14 @@ def clean(dry_run: bool, yes: bool):
     show_default=True,
     help="Max concurrent package downloads (0 to disable parallelism)",
 )
-@click.option("--global", "-g", "global_", is_flag=True, default=False,
-              help="Update user-scope dependencies (~/.apm/)")
+@click.option(
+    "--global",
+    "-g",
+    "global_",
+    is_flag=True,
+    default=False,
+    help="Update user-scope dependencies (~/.apm/)",
+)
 def update(packages, verbose, force, target, parallel_downloads, global_):
     """Update APM dependencies to latest git refs.
 
@@ -544,13 +642,13 @@ def update(packages, verbose, force, target, parallel_downloads, global_):
         apm deps update org/a org/b        # Update specific packages
         apm deps update --verbose          # Show detailed progress
     """
-    from ..install import (
-        _install_apm_dependencies,
-        APM_DEPS_AVAILABLE,
-        _APM_IMPORT_ERROR,
-    )
-    from ...core.command_logger import InstallLogger
     from ...core.auth import AuthResolver
+    from ...core.command_logger import InstallLogger
+    from ..install import (
+        _APM_IMPORT_ERROR,
+        APM_DEPS_AVAILABLE,
+        _install_apm_dependencies,
+    )
 
     logger = InstallLogger(verbose=verbose, partial=bool(packages))
 
@@ -561,6 +659,7 @@ def update(packages, verbose, force, target, parallel_downloads, global_):
         sys.exit(1)
 
     from ...core.scope import InstallScope, get_apm_dir
+
     scope = InstallScope.USER if global_ else InstallScope.PROJECT
     project_root = get_apm_dir(scope)
     apm_yml_path = project_root / APM_YML_FILENAME
@@ -587,7 +686,7 @@ def update(packages, verbose, force, target, parallel_downloads, global_):
     # mapped to their canonical form before calling the engine.
     only_pkgs = None
     if packages:
-        token_to_canonical: Dict[str, str] = {}
+        token_to_canonical: dict[str, str] = {}
         for dep in all_deps:
             canonical_key = dep.get_unique_key() or dep.repo_url or dep.get_display_name()
             tokens = {canonical_key, dep.get_display_name(), dep.repo_url}
@@ -601,7 +700,7 @@ def update(packages, verbose, force, target, parallel_downloads, global_):
                     token_to_canonical[token] = canonical_key
 
         only_pkgs = []
-        seen: Dict[str, bool] = {}
+        seen: dict[str, bool] = {}
         for pkg in packages:
             canonical = token_to_canonical.get(pkg)
             if not canonical:
@@ -628,7 +727,7 @@ def update(packages, verbose, force, target, parallel_downloads, global_):
 
     auth_resolver = AuthResolver()
 
-    if packages:
+    if packages:  # noqa: SIM108
         noun = f"{len(packages)} package(s)"
     else:
         noun = f"all {len(all_deps)} dependencies"
@@ -665,9 +764,7 @@ def update(packages, verbose, force, target, parallel_downloads, global_):
             old_sha = old_shas.get(key)
             new_sha = dep.resolved_commit
             if old_sha and new_sha and old_sha != new_sha:
-                changed.append(
-                    (key, old_sha[:8], new_sha[:8], dep.resolved_ref or "")
-                )
+                changed.append((key, old_sha[:8], new_sha[:8], dep.resolved_ref or ""))
 
     error_count = 0
     if install_result.diagnostics:
@@ -679,9 +776,7 @@ def update(packages, verbose, force, target, parallel_downloads, global_):
     if changed:
         pkg_noun = "package" if len(changed) == 1 else "packages"
         if error_count > 0:
-            logger.warning(
-                f"Updated {len(changed)} {pkg_noun} with {error_count} error(s)."
-            )
+            logger.warning(f"Updated {len(changed)} {pkg_noun} with {error_count} error(s).")
         else:
             logger.success(f"Updated {len(changed)} {pkg_noun}:")
         for key, old_sha, new_sha, ref in changed:
@@ -696,20 +791,20 @@ def update(packages, verbose, force, target, parallel_downloads, global_):
 
 
 @deps.command(help="Show detailed package information")
-@click.argument('package', required=True)
+@click.argument("package", required=True)
 def info(package: str):
     """Show detailed information about a specific package including context files and workflows."""
-    from ..view import resolve_package_path, display_package_info
+    from ..view import display_package_info, resolve_package_path
 
     logger = CommandLogger("deps-info")
 
     project_root = Path(".")
     apm_modules_path = project_root / APM_MODULES_DIR
-    
+
     if not apm_modules_path.exists():
         logger.error("No apm_modules/ directory found")
         logger.progress("Run 'apm install' to install dependencies first")
         sys.exit(1)
-    
+
     package_path = resolve_package_path(package, apm_modules_path, logger)
     display_package_info(package, package_path, logger)

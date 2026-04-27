@@ -15,7 +15,7 @@ import re
 import shutil
 import warnings
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional  # noqa: F401, UP035
 
 import click
 
@@ -58,7 +58,7 @@ class MCPIntegrator:
     @staticmethod
     def collect_transitive(
         apm_modules_dir: Path,
-        lock_path: Optional[Path] = None,
+        lock_path: Path | None = None,
         trust_private: bool = False,
         logger=None,
         diagnostics=None,
@@ -219,28 +219,21 @@ class MCPIntegrator:
                 "url": dep.url or "",
             }
             if dep.headers:
-                remote["headers"] = [
-                    {"name": k, "value": v} for k, v in dep.headers.items()
-                ]
+                remote["headers"] = [{"name": k, "value": v} for k, v in dep.headers.items()]
             info["remotes"] = [remote]
         else:
             # Build as a stdio package
             env_vars = []
             if dep.env:
-                env_vars = [
-                    {"name": k, "description": "", "required": True} for k in dep.env
-                ]
+                env_vars = [{"name": k, "description": "", "required": True} for k in dep.env]
 
             runtime_args = []
             if dep.args:
                 if isinstance(dep.args, builtins.list):
-                    runtime_args = [
-                        {"is_required": True, "value_hint": a} for a in dep.args
-                    ]
+                    runtime_args = [{"is_required": True, "value_hint": a} for a in dep.args]
                 elif isinstance(dep.args, builtins.dict):
                     runtime_args = [
-                        {"is_required": True, "value_hint": v}
-                        for v in dep.args.values()
+                        {"is_required": True, "value_hint": v} for v in dep.args.values()
                     ]
 
             info["packages"] = [
@@ -275,11 +268,11 @@ class MCPIntegrator:
         if dep.transport:
             if dep.transport in ("http", "sse", "streamable-http"):
                 # User prefers remote transport  -- remove packages to force remote path
-                if "remotes" in info and info["remotes"]:
+                if info.get("remotes"):
                     info.pop("packages", None)
             elif dep.transport == "stdio":
                 # User prefers stdio  -- remove remotes to force package path
-                if "packages" in info and info["packages"]:
+                if info.get("packages"):
                     info.pop("remotes", None)
 
         # Package type overlay: select specific package registry (npm, pypi, oci)
@@ -441,8 +434,8 @@ class MCPIntegrator:
     @staticmethod
     def remove_stale(
         stale_names: builtins.set,
-        runtime: str = None,
-        exclude: str = None,
+        runtime: str = None,  # noqa: RUF013
+        exclude: str = None,  # noqa: RUF013
         logger=None,
         scope=None,
     ) -> None:
@@ -463,7 +456,7 @@ class MCPIntegrator:
 
         # Determine which runtimes to clean, mirroring install-time logic.
         all_runtimes = {"vscode", "copilot", "codex", "cursor", "opencode", "gemini"}
-        if runtime:
+        if runtime:  # noqa: SIM108
             target_runtimes = {runtime}
         else:
             target_runtimes = builtins.set(all_runtimes)
@@ -506,9 +499,7 @@ class MCPIntegrator:
                     for name in removed:
                         del servers[name]
                     if removed:
-                        vscode_mcp.write_text(
-                            _json.dumps(config, indent=2), encoding="utf-8"
-                        )
+                        vscode_mcp.write_text(_json.dumps(config, indent=2), encoding="utf-8")
                         for name in removed:
                             if logger:
                                 logger.progress(
@@ -538,9 +529,7 @@ class MCPIntegrator:
                     for name in removed:
                         del servers[name]
                     if removed:
-                        copilot_mcp.write_text(
-                            _json.dumps(config, indent=2), encoding="utf-8"
-                        )
+                        copilot_mcp.write_text(_json.dumps(config, indent=2), encoding="utf-8")
                         for name in removed:
                             _rich_success(
                                 f"Removed stale MCP server '{name}' from Copilot CLI config",
@@ -590,9 +579,7 @@ class MCPIntegrator:
                     for name in removed:
                         del servers[name]
                     if removed:
-                        cursor_mcp.write_text(
-                            _json.dumps(config, indent=2), encoding="utf-8"
-                        )
+                        cursor_mcp.write_text(_json.dumps(config, indent=2), encoding="utf-8")
                         for name in removed:
                             _rich_success(
                                 f"Removed stale MCP server '{name}' from .cursor/mcp.json",
@@ -617,9 +604,7 @@ class MCPIntegrator:
                     for name in removed:
                         del servers[name]
                     if removed:
-                        opencode_cfg.write_text(
-                            _json.dumps(config, indent=2), encoding="utf-8"
-                        )
+                        opencode_cfg.write_text(_json.dumps(config, indent=2), encoding="utf-8")
                         for name in removed:
                             if logger:
                                 logger.progress(
@@ -649,9 +634,7 @@ class MCPIntegrator:
                     for name in removed:
                         del servers[name]
                     if removed:
-                        gemini_cfg.write_text(
-                            _json.dumps(config, indent=2), encoding="utf-8"
-                        )
+                        gemini_cfg.write_text(_json.dumps(config, indent=2), encoding="utf-8")
                         for name in removed:
                             if logger:
                                 logger.progress(
@@ -675,9 +658,9 @@ class MCPIntegrator:
     @staticmethod
     def update_lockfile(
         mcp_server_names: builtins.set,
-        lock_path: Optional[Path] = None,
+        lock_path: Path | None = None,
         *,
-        mcp_configs: Optional[builtins.dict] = None,
+        mcp_configs: builtins.dict | None = None,
     ) -> None:
         """Update the lockfile with the current set of APM-managed MCP server names.
 
@@ -714,12 +697,12 @@ class MCPIntegrator:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _detect_runtimes(scripts: dict) -> List[str]:
+    def _detect_runtimes(scripts: dict) -> list[str]:
         """Extract runtime commands from apm.yml scripts."""
         # CRITICAL: Use builtins.set explicitly to avoid Click command collision!
         detected = builtins.set()
 
-        for script_name, command in scripts.items():
+        for script_name, command in scripts.items():  # noqa: B007
             if re.search(r"\bcopilot\b", command):
                 detected.add("copilot")
             if re.search(r"\bcodex\b", command):
@@ -732,7 +715,7 @@ class MCPIntegrator:
         return builtins.list(detected)
 
     @staticmethod
-    def _filter_runtimes(detected_runtimes: List[str]) -> List[str]:
+    def _filter_runtimes(detected_runtimes: list[str]) -> list[str]:
         """Filter to only runtimes that are actually installed and support MCP."""
         from apm_cli.factory import ClientFactory
 
@@ -761,7 +744,9 @@ class MCPIntegrator:
 
         except ImportError:
             mcp_compatible = [
-                rt for rt in detected_runtimes if rt in ["vscode", "copilot", "cursor", "opencode", "gemini"]
+                rt
+                for rt in detected_runtimes
+                if rt in ["vscode", "copilot", "cursor", "opencode", "gemini"]
             ]
             return [rt for rt in mcp_compatible if shutil.which(rt)]
 
@@ -772,10 +757,10 @@ class MCPIntegrator:
     @staticmethod
     def _install_for_runtime(
         runtime: str,
-        mcp_deps: List[str],
-        shared_env_vars: dict = None,
-        server_info_cache: dict = None,
-        shared_runtime_vars: dict = None,
+        mcp_deps: list[str],
+        shared_env_vars: dict = None,  # noqa: RUF013
+        server_info_cache: dict = None,  # noqa: RUF013
+        shared_runtime_vars: dict = None,  # noqa: RUF013
         logger=None,
     ) -> bool:
         """Install MCP dependencies for a specific runtime.
@@ -787,7 +772,7 @@ class MCPIntegrator:
             from apm_cli.factory import ClientFactory
 
             # Get the appropriate client for the runtime
-            client = ClientFactory.create_client(runtime)
+            client = ClientFactory.create_client(runtime)  # noqa: F841
 
             all_ok = True
             for dep in mcp_deps:
@@ -834,15 +819,17 @@ class MCPIntegrator:
         except ValueError as e:
             if logger:
                 logger.warning(f"Runtime {runtime} not supported: {e}")
-                logger.progress("Supported runtimes: vscode, copilot, codex, cursor, opencode, gemini, llm")
+                logger.progress(
+                    "Supported runtimes: vscode, copilot, codex, cursor, opencode, gemini, llm"
+                )
             else:
                 _rich_warning(f"Runtime {runtime} not supported: {e}")
-                _rich_info("Supported runtimes: vscode, copilot, codex, cursor, opencode, gemini, llm")
+                _rich_info(
+                    "Supported runtimes: vscode, copilot, codex, cursor, opencode, gemini, llm"
+                )
             return False
         except Exception as e:
-            _log.debug(
-                "Unexpected error installing for runtime %s", runtime, exc_info=True
-            )
+            _log.debug("Unexpected error installing for runtime %s", runtime, exc_info=True)
             if logger:
                 logger.error(f"Error installing for runtime {runtime}: {e}")
             else:
@@ -854,13 +841,13 @@ class MCPIntegrator:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def install(
+    def install(  # noqa: C901, PLR0912, PLR0915
         mcp_deps: list,
-        runtime: str = None,
-        exclude: str = None,
+        runtime: str = None,  # noqa: RUF013
+        exclude: str = None,  # noqa: RUF013
         verbose: bool = False,
-        apm_config: dict = None,
-        stored_mcp_configs: dict = None,
+        apm_config: dict = None,  # noqa: RUF013
+        stored_mcp_configs: dict = None,  # noqa: RUF013
         logger=None,
         diagnostics=None,
         scope=None,
@@ -901,16 +888,10 @@ class MCPIntegrator:
             or (hasattr(dep, "is_registry_resolved") and dep.is_registry_resolved)
         ]
         self_defined_deps = [
-            dep
-            for dep in mcp_deps
-            if hasattr(dep, "is_self_defined") and dep.is_self_defined
+            dep for dep in mcp_deps if hasattr(dep, "is_self_defined") and dep.is_self_defined
         ]
-        registry_dep_names = [
-            dep.name if hasattr(dep, "name") else dep for dep in registry_deps
-        ]
-        registry_dep_map = {
-            dep.name: dep for dep in registry_deps if hasattr(dep, "name")
-        }
+        registry_dep_names = [dep.name if hasattr(dep, "name") else dep for dep in registry_deps]
+        registry_dep_map = {dep.name: dep for dep in registry_deps if hasattr(dep, "name")}
 
         console = _get_console()
         # Track servers that were re-applied due to config drift
@@ -936,11 +917,10 @@ class MCPIntegrator:
                     logger.progress(f"Installing MCP dependencies ({len(mcp_deps)})...")
                 else:
                     _rich_info(f"Installing MCP dependencies ({len(mcp_deps)})...")
+        elif logger:
+            logger.progress(f"Installing MCP dependencies ({len(mcp_deps)})...")
         else:
-            if logger:
-                logger.progress(f"Installing MCP dependencies ({len(mcp_deps)})...")
-            else:
-                _rich_info(f"Installing MCP dependencies ({len(mcp_deps)})...")
+            _rich_info(f"Installing MCP dependencies ({len(mcp_deps)})...")
 
         # Runtime detection and multi-runtime installation
         if runtime:
@@ -957,6 +937,7 @@ class MCPIntegrator:
                     apm_yml = Path("apm.yml")
                     if apm_yml.exists():
                         from apm_cli.utils.yaml_io import load_yaml
+
                         apm_config = load_yaml(apm_yml)
                 except Exception:
                     apm_config = None
@@ -990,17 +971,14 @@ class MCPIntegrator:
                             if (Path.cwd() / ".gemini").is_dir():
                                 ClientFactory.create_client(runtime_name)
                                 installed_runtimes.append(runtime_name)
-                        else:
-                            if manager.is_runtime_available(runtime_name):
-                                ClientFactory.create_client(runtime_name)
-                                installed_runtimes.append(runtime_name)
+                        elif manager.is_runtime_available(runtime_name):
+                            ClientFactory.create_client(runtime_name)
+                            installed_runtimes.append(runtime_name)
                     except (ValueError, ImportError):
                         continue
             except ImportError:
                 installed_runtimes = [
-                    rt
-                    for rt in ["copilot", "codex"]
-                    if shutil.which(rt) is not None
+                    rt for rt in ["copilot", "codex"] if shutil.which(rt) is not None
                 ]
                 # VS Code: check binary on PATH or .vscode/ directory presence
                 if _is_vscode_available():
@@ -1022,19 +1000,13 @@ class MCPIntegrator:
 
             # Step 3: Target runtimes BOTH installed AND referenced in scripts
             if script_runtimes:
-                target_runtimes = [
-                    rt for rt in installed_runtimes if rt in script_runtimes
-                ]
+                target_runtimes = [rt for rt in installed_runtimes if rt in script_runtimes]
 
                 if verbose:
                     if console:
                         console.print("|  [cyan][i]  Runtime Detection[/cyan]")
-                        console.print(
-                            f"|     +- Installed: {', '.join(installed_runtimes)}"
-                        )
-                        console.print(
-                            f"|     +- Used in scripts: {', '.join(script_runtimes)}"
-                        )
+                        console.print(f"|     +- Installed: {', '.join(installed_runtimes)}")
+                        console.print(f"|     +- Used in scripts: {', '.join(script_runtimes)}")
                         if target_runtimes:
                             console.print(
                                 f"|     +- Target: {', '.join(target_runtimes)} "
@@ -1045,40 +1017,24 @@ class MCPIntegrator:
                         logger.verbose_detail(
                             f"Installed runtimes: {', '.join(installed_runtimes)}"
                         )
-                        logger.verbose_detail(
-                            f"Script runtimes: {', '.join(script_runtimes)}"
-                        )
+                        logger.verbose_detail(f"Script runtimes: {', '.join(script_runtimes)}")
                         if target_runtimes:
-                            logger.verbose_detail(
-                                f"Target runtimes: {', '.join(target_runtimes)}"
-                            )
+                            logger.verbose_detail(f"Target runtimes: {', '.join(target_runtimes)}")
                     else:
-                        _rich_info(
-                            f"Installed runtimes: {', '.join(installed_runtimes)}"
-                        )
-                        _rich_info(
-                            f"Script runtimes: {', '.join(script_runtimes)}"
-                        )
+                        _rich_info(f"Installed runtimes: {', '.join(installed_runtimes)}")
+                        _rich_info(f"Script runtimes: {', '.join(script_runtimes)}")
                         if target_runtimes:
-                            _rich_info(
-                                f"Target runtimes: {', '.join(target_runtimes)}"
-                            )
+                            _rich_info(f"Target runtimes: {', '.join(target_runtimes)}")
 
                 if not target_runtimes:
                     if logger:
-                        logger.warning(
-                            "Scripts reference runtimes that are not installed"
-                        )
+                        logger.warning("Scripts reference runtimes that are not installed")
                         logger.progress(
                             "Install missing runtimes with: apm runtime setup <runtime>"
                         )
                     else:
-                        _rich_warning(
-                            "Scripts reference runtimes that are not installed"
-                        )
-                        _rich_info(
-                            "Install missing runtimes with: apm runtime setup <runtime>"
-                        )
+                        _rich_warning("Scripts reference runtimes that are not installed")
+                        _rich_info("Install missing runtimes with: apm runtime setup <runtime>")
             else:
                 target_runtimes = installed_runtimes
                 if target_runtimes:
@@ -1093,13 +1049,12 @@ class MCPIntegrator:
                                 f"No scripts detected, using all installed runtimes: "
                                 f"{', '.join(target_runtimes)}"
                             )
+                elif logger:
+                    logger.warning("No MCP-compatible runtimes installed")
+                    logger.progress("Install a runtime with: apm runtime setup copilot")
                 else:
-                    if logger:
-                        logger.warning("No MCP-compatible runtimes installed")
-                        logger.progress("Install a runtime with: apm runtime setup copilot")
-                    else:
-                        _rich_warning("No MCP-compatible runtimes installed")
-                        _rich_info("Install a runtime with: apm runtime setup copilot")
+                    _rich_warning("No MCP-compatible runtimes installed")
+                    _rich_info("Install a runtime with: apm runtime setup copilot")
 
             # Apply exclusions
             if exclude:
@@ -1186,9 +1141,7 @@ class MCPIntegrator:
                             f"Validating {len(registry_deps)} registry servers..."
                         )
                     else:
-                        _rich_info(
-                            f"Validating {len(registry_deps)} registry servers..."
-                        )
+                        _rich_info(f"Validating {len(registry_deps)} registry servers...")
                 valid_servers, invalid_servers = operations.validate_servers_exist(
                     registry_dep_names
                 )
@@ -1198,30 +1151,20 @@ class MCPIntegrator:
                         logger.error(
                             f"Server(s) not found in registry: {', '.join(invalid_servers)}"
                         )
-                        logger.progress(
-                            "Run 'apm mcp search <query>' to find available servers"
-                        )
+                        logger.progress("Run 'apm mcp search <query>' to find available servers")
                     else:
                         _rich_error(
                             f"Server(s) not found in registry: {', '.join(invalid_servers)}"
                         )
-                        _rich_info(
-                            "Run 'apm mcp search <query>' to find available servers"
-                        )
-                    raise RuntimeError(
-                        f"Cannot install {len(invalid_servers)} missing server(s)"
-                    )
+                        _rich_info("Run 'apm mcp search <query>' to find available servers")
+                    raise RuntimeError(f"Cannot install {len(invalid_servers)} missing server(s)")
 
                 if valid_servers:
-                    servers_to_install = (
-                        operations.check_servers_needing_installation(
-                            target_runtimes, valid_servers
-                        )
+                    servers_to_install = operations.check_servers_needing_installation(
+                        target_runtimes, valid_servers
                     )
                     already_configured_candidates = [
-                        dep
-                        for dep in valid_servers
-                        if dep not in servers_to_install
+                        dep for dep in valid_servers if dep not in servers_to_install
                     ]
 
                     # Detect config drift for "already configured" servers
@@ -1232,39 +1175,34 @@ class MCPIntegrator:
                             if n in registry_dep_map
                         ]
                         drifted = MCPIntegrator._detect_mcp_config_drift(
-                            drifted_reg_deps, stored_mcp_configs,
+                            drifted_reg_deps,
+                            stored_mcp_configs,
                         )
                         if drifted:
                             servers_to_update.update(drifted)
-                            MCPIntegrator._append_drifted_to_install_list(servers_to_install, drifted)
+                            MCPIntegrator._append_drifted_to_install_list(
+                                servers_to_install, drifted
+                            )
                     already_configured_servers = [
-                        dep
-                        for dep in already_configured_candidates
-                        if dep not in servers_to_update
+                        dep for dep in already_configured_candidates if dep not in servers_to_update
                     ]
 
                     if not servers_to_install:
                         if console:
                             for dep in already_configured_servers:
                                 console.print(
-                                    f"|  [green]+[/green] {dep} "
-                                    f"[dim](already configured)[/dim]"
+                                    f"|  [green]+[/green] {dep} [dim](already configured)[/dim]"
                                 )
                         elif logger:
-                            logger.success(
-                                "All registry MCP servers already configured"
-                            )
+                            logger.success("All registry MCP servers already configured")
                         else:
-                            _rich_success(
-                                "All registry MCP servers already configured"
-                            )
+                            _rich_success("All registry MCP servers already configured")
                     else:
                         if already_configured_servers:
                             if console:
                                 for dep in already_configured_servers:
                                     console.print(
-                                        f"|  [green]+[/green] {dep} "
-                                        f"[dim](already configured)[/dim]"
+                                        f"|  [green]+[/green] {dep} [dim](already configured)[/dim]"
                                     )
                             elif logger:
                                 logger.verbose_detail(
@@ -1284,35 +1222,25 @@ class MCPIntegrator:
                                     f"Installing {len(servers_to_install)} servers..."
                                 )
                             else:
-                                _rich_info(
-                                    f"Installing {len(servers_to_install)} servers..."
-                                )
-                        server_info_cache = operations.batch_fetch_server_info(
-                            servers_to_install
-                        )
+                                _rich_info(f"Installing {len(servers_to_install)} servers...")
+                        server_info_cache = operations.batch_fetch_server_info(servers_to_install)
 
                         # Apply overlays
                         for server_name in servers_to_install:
                             dep = registry_dep_map.get(server_name)
                             if dep:
-                                MCPIntegrator._apply_overlay(
-                                    server_info_cache, dep
-                                )
+                                MCPIntegrator._apply_overlay(server_info_cache, dep)
 
                         # Collect env and runtime variables
-                        shared_env_vars = (
-                            operations.collect_environment_variables(
-                                servers_to_install, server_info_cache
-                            )
+                        shared_env_vars = operations.collect_environment_variables(
+                            servers_to_install, server_info_cache
                         )
                         for server_name in servers_to_install:
                             dep = registry_dep_map.get(server_name)
                             if dep and dep.env:
                                 shared_env_vars.update(dep.env)
-                        shared_runtime_vars = (
-                            operations.collect_runtime_variables(
-                                servers_to_install, server_info_cache
-                            )
+                        shared_runtime_vars = operations.collect_runtime_variables(
+                            servers_to_install, server_info_cache
                         )
 
                         # Install for each target runtime
@@ -1355,25 +1283,16 @@ class MCPIntegrator:
                                 if is_update:
                                     successful_updates.add(dep)
                             elif console:
-                                console.print(
-                                    f"|  [red]x[/red]  {dep}  -- "
-                                    f"failed for all runtimes"
-                                )
+                                console.print(f"|  [red]x[/red]  {dep}  -- failed for all runtimes")
 
             except ImportError:
                 if logger:
                     logger.warning("Registry operations not available")
-                    logger.error(
-                        "Cannot validate MCP servers without registry operations"
-                    )
+                    logger.error("Cannot validate MCP servers without registry operations")
                 else:
                     _rich_warning("Registry operations not available")
-                    _rich_error(
-                        "Cannot validate MCP servers without registry operations"
-                    )
-                raise RuntimeError(
-                    "Registry operations module required for MCP installation"
-                )
+                    _rich_error("Cannot validate MCP servers without registry operations")
+                raise RuntimeError("Registry operations module required for MCP installation")
 
         # --- Self-defined deps (registry: false) ---
         if self_defined_deps:
@@ -1385,36 +1304,31 @@ class MCPIntegrator:
                 )
             )
             already_configured_candidates_sd = [
-                name
-                for name in self_defined_names
-                if name not in self_defined_to_install
+                name for name in self_defined_names if name not in self_defined_to_install
             ]
 
             # Detect config drift for "already configured" self-defined servers
             if stored_mcp_configs and already_configured_candidates_sd:
                 drifted_sd_deps = [
-                    dep for dep in self_defined_deps
-                    if dep.name in already_configured_candidates_sd
+                    dep for dep in self_defined_deps if dep.name in already_configured_candidates_sd
                 ]
                 drifted_sd = MCPIntegrator._detect_mcp_config_drift(
-                    drifted_sd_deps, stored_mcp_configs,
+                    drifted_sd_deps,
+                    stored_mcp_configs,
                 )
                 if drifted_sd:
                     servers_to_update.update(drifted_sd)
-                    MCPIntegrator._append_drifted_to_install_list(self_defined_to_install, drifted_sd)
+                    MCPIntegrator._append_drifted_to_install_list(
+                        self_defined_to_install, drifted_sd
+                    )
             already_configured_self_defined = [
-                name
-                for name in already_configured_candidates_sd
-                if name not in servers_to_update
+                name for name in already_configured_candidates_sd if name not in servers_to_update
             ]
 
             if already_configured_self_defined:
                 if console:
                     for name in already_configured_self_defined:
-                        console.print(
-                            f"|  [green]+[/green] {name} "
-                            f"[dim](already configured)[/dim]"
-                        )
+                        console.print(f"|  [green]+[/green] {name} [dim](already configured)[/dim]")
                 elif logger:
                     for name in already_configured_self_defined:
                         logger.verbose_detail(f"{name} already configured, skipping")
@@ -1477,10 +1391,7 @@ class MCPIntegrator:
                     if is_update:
                         successful_updates.add(dep.name)
                 elif console:
-                    console.print(
-                        f"|  [red]x[/red]  {dep.name}  -- "
-                        f"failed for all runtimes"
-                    )
+                    console.print(f"|  [red]x[/red]  {dep.name}  -- failed for all runtimes")
 
         # Close the panel
         if console:
@@ -1492,15 +1403,9 @@ class MCPIntegrator:
                 new_count = configured_count - update_count
                 parts = []
                 if new_count > 0:
-                    parts.append(
-                        f"configured {new_count} "
-                        f"server{'s' if new_count != 1 else ''}"
-                    )
+                    parts.append(f"configured {new_count} server{'s' if new_count != 1 else ''}")
                 if update_count > 0:
-                    parts.append(
-                        f"updated {update_count} "
-                        f"server{'s' if update_count != 1 else ''}"
-                    )
+                    parts.append(f"updated {update_count} server{'s' if update_count != 1 else ''}")
                 console.print(f"+- [green]{', '.join(parts).capitalize()}[/green]")
             else:
                 console.print("+- [green]All servers up to date[/green]")

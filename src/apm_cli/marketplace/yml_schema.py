@@ -26,7 +26,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple  # noqa: F401, UP035
 
 import yaml
 
@@ -34,12 +34,12 @@ from ..utils.path_security import PathTraversalError, validate_path_segments
 from .errors import MarketplaceYmlError
 
 __all__ = [
-    "MarketplaceYml",
-    "MarketplaceOwner",
-    "MarketplaceBuild",
-    "PackageEntry",
-    "MarketplaceYmlError",
     "SOURCE_RE",
+    "MarketplaceBuild",
+    "MarketplaceOwner",
+    "MarketplaceYml",
+    "MarketplaceYmlError",
+    "PackageEntry",
     "load_marketplace_yml",
 ]
 
@@ -64,32 +64,38 @@ _TAG_PLACEHOLDERS = ("{version}", "{name}")
 # Permitted key sets (strict mode)
 # ---------------------------------------------------------------------------
 
-_TOP_LEVEL_KEYS = frozenset({
-    "name",
-    "description",
-    "version",
-    "owner",
-    "output",
-    "metadata",
-    "build",
-    "packages",
-})
+_TOP_LEVEL_KEYS = frozenset(
+    {
+        "name",
+        "description",
+        "version",
+        "owner",
+        "output",
+        "metadata",
+        "build",
+        "packages",
+    }
+)
 
-_BUILD_KEYS = frozenset({
-    "tagPattern",
-})
+_BUILD_KEYS = frozenset(
+    {
+        "tagPattern",
+    }
+)
 
-_PACKAGE_ENTRY_KEYS = frozenset({
-    "name",
-    "source",
-    "subdir",
-    "version",
-    "ref",
-    "tag_pattern",
-    "include_prerelease",
-    "description",
-    "tags",
-})
+_PACKAGE_ENTRY_KEYS = frozenset(
+    {
+        "name",
+        "source",
+        "subdir",
+        "version",
+        "ref",
+        "tag_pattern",
+        "include_prerelease",
+        "description",
+        "tags",
+    }
+)
 # ---------------------------------------------------------------------------
 # Dataclasses
 # ---------------------------------------------------------------------------
@@ -100,8 +106,8 @@ class MarketplaceOwner:
     """Owner block of ``marketplace.yml``."""
 
     name: str
-    email: Optional[str] = None
-    url: Optional[str] = None
+    email: str | None = None
+    url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -124,13 +130,13 @@ class PackageEntry:
     name: str
     source: str
     # APM-only fields
-    subdir: Optional[str] = None
-    version: Optional[str] = None
-    ref: Optional[str] = None
-    tag_pattern: Optional[str] = None
+    subdir: str | None = None
+    version: str | None = None
+    ref: str | None = None
+    tag_pattern: str | None = None
     include_prerelease: bool = False
     # Anthropic pass-through fields
-    tags: Tuple[str, ...] = ()
+    tags: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -147,9 +153,9 @@ class MarketplaceYml:
     version: str
     owner: MarketplaceOwner
     output: str = "marketplace.json"
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     build: MarketplaceBuild = field(default_factory=MarketplaceBuild)
-    packages: Tuple[PackageEntry, ...] = ()
+    packages: tuple[PackageEntry, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +164,7 @@ class MarketplaceYml:
 
 
 def _require_str(
-    data: Dict[str, Any],
+    data: dict[str, Any],
     key: str,
     *,
     context: str = "",
@@ -169,9 +175,7 @@ def _require_str(
     if value is None:
         raise MarketplaceYmlError(f"'{path}' is required")
     if not isinstance(value, str) or not value.strip():
-        raise MarketplaceYmlError(
-            f"'{path}' must be a non-empty string"
-        )
+        raise MarketplaceYmlError(f"'{path}' must be a non-empty string")
     return value.strip()
 
 
@@ -187,9 +191,7 @@ def _validate_source(source: str, *, index: int) -> None:
     """Validate ``source`` field shape and path safety."""
     ctx = f"packages[{index}].source"
     if not SOURCE_RE.match(source):
-        raise MarketplaceYmlError(
-            f"'{ctx}' must match '<owner>/<repo>' shape, got '{source}'"
-        )
+        raise MarketplaceYmlError(f"'{ctx}' must match '<owner>/<repo>' shape, got '{source}'")
     try:
         validate_path_segments(source, context=ctx)
     except PathTraversalError as exc:
@@ -206,7 +208,7 @@ def _validate_tag_pattern(pattern: str, *, context: str) -> None:
 
 
 def _check_unknown_keys(
-    data: Dict[str, Any],
+    data: dict[str, Any],
     permitted: frozenset,
     *,
     context: str,
@@ -230,9 +232,7 @@ def _check_unknown_keys(
 def _parse_owner(raw: Any) -> MarketplaceOwner:
     """Parse and validate the ``owner`` block."""
     if not isinstance(raw, dict):
-        raise MarketplaceYmlError(
-            "'owner' must be a mapping with at least a 'name' key"
-        )
+        raise MarketplaceYmlError("'owner' must be a mapping with at least a 'name' key")
     name = _require_str(raw, "name", context="owner")
     email = raw.get("email")
     if email is not None:
@@ -252,9 +252,7 @@ def _parse_build(raw: Any) -> MarketplaceBuild:
     _check_unknown_keys(raw, _BUILD_KEYS, context="build")
     tag_pattern = raw.get("tagPattern", "v{version}")
     if not isinstance(tag_pattern, str) or not tag_pattern.strip():
-        raise MarketplaceYmlError(
-            "'build.tagPattern' must be a non-empty string"
-        )
+        raise MarketplaceYmlError("'build.tagPattern' must be a non-empty string")
     tag_pattern = tag_pattern.strip()
     _validate_tag_pattern(tag_pattern, context="build.tagPattern")
     return MarketplaceBuild(tag_pattern=tag_pattern)
@@ -263,9 +261,7 @@ def _parse_build(raw: Any) -> MarketplaceBuild:
 def _parse_package_entry(raw: Any, index: int) -> PackageEntry:
     """Parse and validate a single ``packages`` entry."""
     if not isinstance(raw, dict):
-        raise MarketplaceYmlError(
-            f"packages[{index}] must be a mapping"
-        )
+        raise MarketplaceYmlError(f"packages[{index}] must be a mapping")
 
     # -- strict key check --
     _check_unknown_keys(raw, _PACKAGE_ENTRY_KEYS, context=f"packages[{index}]")
@@ -275,12 +271,10 @@ def _parse_package_entry(raw: Any, index: int) -> PackageEntry:
     _validate_source(source, index=index)
 
     # APM-only: subdir
-    subdir: Optional[str] = raw.get("subdir")
+    subdir: str | None = raw.get("subdir")
     if subdir is not None:
         if not isinstance(subdir, str) or not subdir.strip():
-            raise MarketplaceYmlError(
-                f"'packages[{index}].subdir' must be a non-empty string"
-            )
+            raise MarketplaceYmlError(f"'packages[{index}].subdir' must be a non-empty string")
         subdir = subdir.strip()
         try:
             validate_path_segments(subdir, context=f"packages[{index}].subdir")
@@ -288,57 +282,44 @@ def _parse_package_entry(raw: Any, index: int) -> PackageEntry:
             raise MarketplaceYmlError(str(exc)) from exc
 
     # APM-only: version (semver range -- stored as string, not parsed here)
-    version: Optional[str] = raw.get("version")
+    version: str | None = raw.get("version")
     if version is not None:
         version = str(version).strip()
         if not version:
-            raise MarketplaceYmlError(
-                f"'packages[{index}].version' must be a non-empty string"
-            )
+            raise MarketplaceYmlError(f"'packages[{index}].version' must be a non-empty string")
 
     # APM-only: ref
-    ref: Optional[str] = raw.get("ref")
+    ref: str | None = raw.get("ref")
     if ref is not None:
         ref = str(ref).strip()
         if not ref:
-            raise MarketplaceYmlError(
-                f"'packages[{index}].ref' must be a non-empty string"
-            )
+            raise MarketplaceYmlError(f"'packages[{index}].ref' must be a non-empty string")
 
     # At least one of version or ref must be present
     if version is None and ref is None:
         raise MarketplaceYmlError(
-            f"packages[{index}] ('{name}'): at least one of "
-            f"'version' or 'ref' must be set"
+            f"packages[{index}] ('{name}'): at least one of 'version' or 'ref' must be set"
         )
 
     # APM-only: tag_pattern
-    tag_pattern: Optional[str] = raw.get("tag_pattern")
+    tag_pattern: str | None = raw.get("tag_pattern")
     if tag_pattern is not None:
         if not isinstance(tag_pattern, str) or not tag_pattern.strip():
-            raise MarketplaceYmlError(
-                f"'packages[{index}].tag_pattern' must be a non-empty string"
-            )
+            raise MarketplaceYmlError(f"'packages[{index}].tag_pattern' must be a non-empty string")
         tag_pattern = tag_pattern.strip()
-        _validate_tag_pattern(
-            tag_pattern, context=f"packages[{index}].tag_pattern"
-        )
+        _validate_tag_pattern(tag_pattern, context=f"packages[{index}].tag_pattern")
 
     # APM-only: include_prerelease
     include_prerelease = raw.get("include_prerelease", False)
     if not isinstance(include_prerelease, bool):
-        raise MarketplaceYmlError(
-            f"'packages[{index}].include_prerelease' must be a boolean"
-        )
+        raise MarketplaceYmlError(f"'packages[{index}].include_prerelease' must be a boolean")
 
     # Anthropic pass-through: tags
     raw_tags = raw.get("tags")
-    tags: Tuple[str, ...] = ()
+    tags: tuple[str, ...] = ()
     if raw_tags is not None:
         if not isinstance(raw_tags, list):
-            raise MarketplaceYmlError(
-                f"'packages[{index}].tags' must be a list of strings"
-            )
+            raise MarketplaceYmlError(f"'packages[{index}].tags' must be a list of strings")
         tags = tuple(str(t) for t in raw_tags)
 
     return PackageEntry(
@@ -380,9 +361,7 @@ def load_marketplace_yml(path: Path) -> MarketplaceYml:
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
-        raise MarketplaceYmlError(
-            f"Cannot read '{path}': {exc}"
-        ) from exc
+        raise MarketplaceYmlError(f"Cannot read '{path}': {exc}") from exc
 
     try:
         data = yaml.safe_load(text)
@@ -392,14 +371,10 @@ def load_marketplace_yml(path: Path) -> MarketplaceYml:
         if hasattr(exc, "problem_mark") and exc.problem_mark is not None:
             mark = exc.problem_mark
             detail = f" (line {mark.line + 1}, column {mark.column + 1})"
-        raise MarketplaceYmlError(
-            f"YAML parse error in '{path}'{detail}: {exc}"
-        ) from exc
+        raise MarketplaceYmlError(f"YAML parse error in '{path}'{detail}: {exc}") from exc
 
     if not isinstance(data, dict):
-        raise MarketplaceYmlError(
-            f"'{path}' must contain a YAML mapping at the top level"
-        )
+        raise MarketplaceYmlError(f"'{path}' must contain a YAML mapping at the top level")
 
     # -- strict top-level key check --
     _check_unknown_keys(data, _TOP_LEVEL_KEYS, context="top level")
@@ -419,9 +394,7 @@ def load_marketplace_yml(path: Path) -> MarketplaceYml:
     # -- output --
     output = data.get("output", "marketplace.json")
     if not isinstance(output, str) or not output.strip():
-        raise MarketplaceYmlError(
-            "'output' must be a non-empty string"
-        )
+        raise MarketplaceYmlError("'output' must be a non-empty string")
     output = output.strip()
 
     # Path-traversal guard -- reject output paths containing ".." segments.
@@ -431,7 +404,7 @@ def load_marketplace_yml(path: Path) -> MarketplaceYml:
         raise MarketplaceYmlError(str(exc)) from exc
 
     # -- metadata (Anthropic pass-through, preserve verbatim) --
-    metadata: Dict[str, Any] = {}
+    metadata: dict[str, Any] = {}
     raw_metadata = data.get("metadata")
     if raw_metadata is not None:
         if not isinstance(raw_metadata, dict):
@@ -448,8 +421,8 @@ def load_marketplace_yml(path: Path) -> MarketplaceYml:
     if not isinstance(raw_packages, list):
         raise MarketplaceYmlError("'packages' must be a list")
 
-    entries: List[PackageEntry] = []
-    seen_names: Dict[str, int] = {}
+    entries: list[PackageEntry] = []
+    seen_names: dict[str, int] = {}
     for idx, raw_entry in enumerate(raw_packages):
         entry = _parse_package_entry(raw_entry, idx)
         lower_name = entry.name.lower()

@@ -24,6 +24,7 @@ from ._helpers import (
     _validate_project_name,
 )
 
+
 @click.command(help="Initialize a new APM project")
 @click.argument("project_name", required=False)
 @click.option(
@@ -172,8 +173,7 @@ def init(ctx, project_name, yes, plugin, verbose):
                 )
         except (ImportError, NameError):
             click.echo(
-                "  Docs: https://microsoft.github.io/apm  |  "
-                "Star: https://github.com/microsoft/apm"
+                "  Docs: https://microsoft.github.io/apm  |  Star: https://github.com/microsoft/apm"
             )
 
     except Exception as e:
@@ -216,9 +216,7 @@ def _interactive_project_setup(default_name, logger):
 version: {version}
 description: {description}
 author: {author}"""
-        console.print(
-            Panel(summary_content, title="About to create", border_style="cyan")
-        )
+        console.print(Panel(summary_content, title="About to create", border_style="cyan"))
 
         if not Confirm.ask("\nIs this OK?", default=True):
             console.print("[info]Aborted.[/info]")

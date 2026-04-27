@@ -31,7 +31,15 @@ class MCPClientAdapter(ABC):
         pass
 
     @abstractmethod
-    def configure_mcp_server(self, server_url, server_name=None, enabled=True, env_overrides=None, server_info_cache=None, runtime_vars=None):
+    def configure_mcp_server(
+        self,
+        server_url,
+        server_name=None,
+        enabled=True,
+        env_overrides=None,
+        server_info_cache=None,
+        runtime_vars=None,
+    ):
         """Configure an MCP server in the client configuration.
 
         Args:

@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import textwrap
-from pathlib import Path
+import textwrap  # noqa: F401
+from pathlib import Path  # noqa: F401
 
 import pytest
-import yaml
+import yaml  # noqa: F401
 from click.testing import CliRunner
 
 from apm_cli.commands.marketplace import marketplace
 from apm_cli.marketplace.yml_schema import load_marketplace_yml
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -102,11 +101,15 @@ class TestInitExistsGuard:
 
 class TestInitGitignoreCheck:
     def test_warns_when_gitignore_ignores_marketplace_json(
-        self, runner, tmp_path, monkeypatch,
+        self,
+        runner,
+        tmp_path,
+        monkeypatch,
     ):
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".gitignore").write_text(
-            "marketplace.json\n", encoding="utf-8",
+            "marketplace.json\n",
+            encoding="utf-8",
         )
         result = runner.invoke(marketplace, ["init"])
         assert result.exit_code == 0
@@ -115,7 +118,8 @@ class TestInitGitignoreCheck:
     def test_warns_for_glob_pattern(self, runner, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".gitignore").write_text(
-            "**/marketplace.json\n", encoding="utf-8",
+            "**/marketplace.json\n",
+            encoding="utf-8",
         )
         result = runner.invoke(marketplace, ["init"])
         assert result.exit_code == 0
@@ -124,7 +128,8 @@ class TestInitGitignoreCheck:
     def test_warns_for_rooted_pattern(self, runner, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".gitignore").write_text(
-            "/marketplace.json\n", encoding="utf-8",
+            "/marketplace.json\n",
+            encoding="utf-8",
         )
         result = runner.invoke(marketplace, ["init"])
         assert result.exit_code == 0
@@ -133,18 +138,23 @@ class TestInitGitignoreCheck:
     def test_no_warning_for_commented_line(self, runner, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".gitignore").write_text(
-            "# marketplace.json\n", encoding="utf-8",
+            "# marketplace.json\n",
+            encoding="utf-8",
         )
         result = runner.invoke(marketplace, ["init"])
         assert result.exit_code == 0
         assert ".gitignore ignores marketplace.json" not in result.output
 
     def test_no_gitignore_check_suppresses_warning(
-        self, runner, tmp_path, monkeypatch,
+        self,
+        runner,
+        tmp_path,
+        monkeypatch,
     ):
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".gitignore").write_text(
-            "marketplace.json\n", encoding="utf-8",
+            "marketplace.json\n",
+            encoding="utf-8",
         )
         result = runner.invoke(marketplace, ["init", "--no-gitignore-check"])
         assert result.exit_code == 0
@@ -220,7 +230,8 @@ class TestInitNameOwnerFlags:
     def test_custom_name_and_owner(self, runner, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(
-            marketplace, ["init", "--name", "my-mkt", "--owner", "my-team"],
+            marketplace,
+            ["init", "--name", "my-mkt", "--owner", "my-team"],
         )
         assert result.exit_code == 0
         yml = load_marketplace_yml(tmp_path / "marketplace.yml")
@@ -243,7 +254,8 @@ class TestInitNameOwnerFlags:
     def test_custom_values_are_pure_ascii(self, runner, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(
-            marketplace, ["init", "--name", "ascii-only", "--owner", "plain-org"],
+            marketplace,
+            ["init", "--name", "ascii-only", "--owner", "plain-org"],
         )
         assert result.exit_code == 0
         content = (tmp_path / "marketplace.yml").read_text(encoding="utf-8")

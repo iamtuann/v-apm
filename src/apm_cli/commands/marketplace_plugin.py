@@ -20,7 +20,6 @@ from ..marketplace.errors import (
 )
 from ._helpers import _is_interactive
 
-
 # -------------------------------------------------------------------
 # Constants
 # -------------------------------------------------------------------
@@ -43,8 +42,7 @@ def _ensure_yml_exists(logger: CommandLogger) -> Path:
     path = _yml_path()
     if not path.exists():
         logger.error(
-            "No marketplace.yml found. "
-            "Run 'apm marketplace init' to scaffold one.",
+            "No marketplace.yml found. Run 'apm marketplace init' to scaffold one.",
             symbol="error",
         )
         sys.exit(1)
@@ -106,8 +104,7 @@ def _resolve_ref(
     if is_head:
         if no_verify:
             logger.error(
-                "Cannot resolve HEAD ref without network access. "
-                "Provide an explicit --ref SHA.",
+                "Cannot resolve HEAD ref without network access. Provide an explicit --ref SHA.",
                 symbol="error",
             )
             sys.exit(2)
@@ -154,8 +151,7 @@ def _resolve_ref(
                 )
                 sys.exit(2)
             logger.warning(
-                f"'{ref}' is a branch (mutable ref). "
-                "Resolving to current SHA for safety.",
+                f"'{ref}' is a branch (mutable ref). Resolving to current SHA for safety.",
                 symbol="warning",
             )
             logger.progress(
@@ -198,9 +194,7 @@ def package():
 @click.option("-s", "--subdir", default=None, help="Subdirectory inside source repo")
 @click.option("--tag-pattern", default=None, help="Tag pattern (e.g. 'v{version}')")
 @click.option("--tags", default=None, help="Comma-separated tags")
-@click.option(
-    "--include-prerelease", is_flag=True, help="Include prerelease versions"
-)
+@click.option("--include-prerelease", is_flag=True, help="Include prerelease versions")
 @click.option("--no-verify", is_flag=True, help="Skip remote reachability check")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed output")
 def add(
@@ -338,8 +332,7 @@ def set_cmd(
 
     if not fields:
         logger.error(
-            "No fields specified. Pass at least one option "
-            "(e.g. --version, --ref, --subdir).",
+            "No fields specified. Pass at least one option (e.g. --version, --ref, --subdir).",
             symbol="error",
         )
         sys.exit(1)

@@ -2,26 +2,25 @@
 
 from __future__ import annotations
 
-import json
+import json  # noqa: F401
 import textwrap
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch  # noqa: F401
 
 import pytest
 from click.testing import CliRunner
 
 from apm_cli.commands.marketplace import marketplace
-from apm_cli.marketplace.builder import BuildOptions, BuildReport, ResolvedPackage
+from apm_cli.marketplace.builder import BuildOptions, BuildReport, ResolvedPackage  # noqa: F401
 from apm_cli.marketplace.errors import (
     BuildError,
     GitLsRemoteError,
     HeadNotAllowedError,
-    MarketplaceYmlError,
+    MarketplaceYmlError,  # noqa: F401
     NoMatchingVersionError,
     OfflineMissError,
     RefNotFoundError,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
@@ -50,8 +49,13 @@ _BASIC_YML = textwrap.dedent("""\
 
 
 def _make_report(
-    resolved=None, errors=(), dry_run=False,
-    unchanged=0, added=2, updated=0, removed=0,
+    resolved=None,
+    errors=(),
+    dry_run=False,
+    unchanged=0,
+    added=2,
+    updated=0,
+    removed=0,
 ):
     """Build a fake BuildReport."""
     if resolved is None:
@@ -269,9 +273,7 @@ class TestBuildErrors:
     @patch("apm_cli.commands.marketplace.MarketplaceBuilder")
     def test_no_matching_version_error(self, MockBuilder, runner, yml_cwd):
         mock_inst = MockBuilder.return_value
-        mock_inst.build.side_effect = NoMatchingVersionError(
-            "pkg-alpha", "^1.0.0"
-        )
+        mock_inst.build.side_effect = NoMatchingVersionError("pkg-alpha", "^1.0.0")
 
         result = runner.invoke(marketplace, ["build"])
         assert result.exit_code == 1
@@ -280,9 +282,7 @@ class TestBuildErrors:
     @patch("apm_cli.commands.marketplace.MarketplaceBuilder")
     def test_ref_not_found_error(self, MockBuilder, runner, yml_cwd):
         mock_inst = MockBuilder.return_value
-        mock_inst.build.side_effect = RefNotFoundError(
-            "pkg-alpha", "v99.0.0", "acme-org/pkg-alpha"
-        )
+        mock_inst.build.side_effect = RefNotFoundError("pkg-alpha", "v99.0.0", "acme-org/pkg-alpha")
 
         result = runner.invoke(marketplace, ["build"])
         assert result.exit_code == 1
@@ -316,9 +316,7 @@ class TestBuildErrors:
     @patch("apm_cli.commands.marketplace.MarketplaceBuilder")
     def test_head_not_allowed_error(self, MockBuilder, runner, yml_cwd):
         mock_inst = MockBuilder.return_value
-        mock_inst.build.side_effect = HeadNotAllowedError(
-            package="pkg-alpha", ref="main"
-        )
+        mock_inst.build.side_effect = HeadNotAllowedError(package="pkg-alpha", ref="main")
 
         result = runner.invoke(marketplace, ["build"])
         assert result.exit_code == 1
@@ -327,9 +325,7 @@ class TestBuildErrors:
     @patch("apm_cli.commands.marketplace.MarketplaceBuilder")
     def test_generic_build_error(self, MockBuilder, runner, yml_cwd):
         mock_inst = MockBuilder.return_value
-        mock_inst.build.side_effect = BuildError(
-            "Something unexpected", package="pkg-alpha"
-        )
+        mock_inst.build.side_effect = BuildError("Something unexpected", package="pkg-alpha")
 
         result = runner.invoke(marketplace, ["build"])
         assert result.exit_code == 1
@@ -404,9 +400,7 @@ class TestBuildVerboseTraceback:
     """build --verbose -- traceback on unexpected failure."""
 
     @patch("apm_cli.commands.marketplace.MarketplaceBuilder")
-    def test_verbose_shows_traceback_on_unexpected_error(
-        self, MockBuilder, runner, yml_cwd
-    ):
+    def test_verbose_shows_traceback_on_unexpected_error(self, MockBuilder, runner, yml_cwd):
         """When --verbose is passed and build raises an unexpected error,
         stderr should contain the full traceback."""
         mock_inst = MockBuilder.return_value
