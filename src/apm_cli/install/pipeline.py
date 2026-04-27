@@ -44,7 +44,7 @@ list = builtins.list
 dict = builtins.dict
 
 
-def run_install_pipeline(  # noqa: PLR0913
+def run_install_pipeline(
     apm_package: APMPackage,
     update_refs: bool = False,
     verbose: bool = False,
