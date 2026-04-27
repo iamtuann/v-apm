@@ -114,7 +114,7 @@ class APMPackage:
 
             data = load_yaml(apm_yml_path)
         except yaml.YAMLError as e:
-            raise ValueError(f"Invalid YAML format in {apm_yml_path}: {e}")
+            raise ValueError(f"Invalid YAML format in {apm_yml_path}: {e}")  # noqa: B904
 
         if not isinstance(data, dict):
             raise ValueError(f"apm.yml must contain a YAML object, got {type(data)}")
@@ -139,14 +139,14 @@ class APMPackage:
                                 try:
                                     parsed_deps.append(DependencyReference.parse(dep_entry))
                                 except ValueError as e:
-                                    raise ValueError(f"Invalid APM dependency '{dep_entry}': {e}")
+                                    raise ValueError(f"Invalid APM dependency '{dep_entry}': {e}")  # noqa: B904
                             elif isinstance(dep_entry, dict):
                                 try:
                                     parsed_deps.append(
                                         DependencyReference.parse_from_dict(dep_entry)
                                     )
                                 except ValueError as e:
-                                    raise ValueError(f"Invalid APM dependency {dep_entry}: {e}")
+                                    raise ValueError(f"Invalid APM dependency {dep_entry}: {e}")  # noqa: B904
                         dependencies[dep_type] = parsed_deps
                     elif dep_type == "mcp":
                         parsed_mcp = []
@@ -157,7 +157,7 @@ class APMPackage:
                                 try:
                                     parsed_mcp.append(MCPDependency.from_dict(dep))
                                 except ValueError as e:
-                                    raise ValueError(f"Invalid MCP dependency: {e}")
+                                    raise ValueError(f"Invalid MCP dependency: {e}")  # noqa: B904
                         dependencies[dep_type] = parsed_mcp
                     else:
                         # Other dependency types: keep as-is
@@ -178,7 +178,7 @@ class APMPackage:
                                 try:
                                     parsed_deps.append(DependencyReference.parse(dep_entry))
                                 except ValueError as e:
-                                    raise ValueError(
+                                    raise ValueError(  # noqa: B904
                                         f"Invalid dev APM dependency '{dep_entry}': {e}"
                                     )
                             elif isinstance(dep_entry, dict):
@@ -187,7 +187,7 @@ class APMPackage:
                                         DependencyReference.parse_from_dict(dep_entry)
                                     )
                                 except ValueError as e:
-                                    raise ValueError(f"Invalid dev APM dependency {dep_entry}: {e}")
+                                    raise ValueError(f"Invalid dev APM dependency {dep_entry}: {e}")  # noqa: B904
                         dev_dependencies[dep_type] = parsed_deps
                     elif dep_type == "mcp":
                         parsed_mcp = []
@@ -198,7 +198,7 @@ class APMPackage:
                                 try:
                                     parsed_mcp.append(MCPDependency.from_dict(dep))
                                 except ValueError as e:
-                                    raise ValueError(f"Invalid dev MCP dependency: {e}")
+                                    raise ValueError(f"Invalid dev MCP dependency: {e}")  # noqa: B904
                         dev_dependencies[dep_type] = parsed_mcp
                     else:
                         dev_dependencies[dep_type] = [
@@ -216,7 +216,7 @@ class APMPackage:
             try:
                 pkg_type = PackageContentType.from_string(type_value)
             except ValueError as e:
-                raise ValueError(f"Invalid 'type' field in apm.yml: {e}")
+                raise ValueError(f"Invalid 'type' field in apm.yml: {e}")  # noqa: B904
 
         # Parse includes (auto-publish opt-in): either the literal "auto" or a list of repo paths
         includes = None

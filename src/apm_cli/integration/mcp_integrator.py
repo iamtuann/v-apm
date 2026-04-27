@@ -1292,7 +1292,7 @@ class MCPIntegrator:
                 else:
                     _rich_warning("Registry operations not available")
                     _rich_error("Cannot validate MCP servers without registry operations")
-                raise RuntimeError("Registry operations module required for MCP installation")
+                raise RuntimeError("Registry operations module required for MCP installation")  # noqa: B904
 
         # --- Self-defined deps (registry: false) ---
         if self_defined_deps:

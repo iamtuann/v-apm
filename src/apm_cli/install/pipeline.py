@@ -98,7 +98,7 @@ def run_install_pipeline(  # noqa: PLR0913
     try:
         from ..deps.lockfile import LockFile, get_lockfile_path
     except ImportError:
-        raise RuntimeError("APM dependency system not available")
+        raise RuntimeError("APM dependency system not available")  # noqa: B904
 
     from ..core.scope import InstallScope, get_apm_dir, get_deploy_root
 
@@ -390,4 +390,4 @@ def run_install_pipeline(  # noqa: PLR0913
         # resolution -- surface as-is for actionable user guidance.
         raise
     except Exception as e:
-        raise RuntimeError(f"Failed to resolve APM dependencies: {e}")
+        raise RuntimeError(f"Failed to resolve APM dependencies: {e}")  # noqa: B904
