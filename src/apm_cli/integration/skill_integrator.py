@@ -759,6 +759,12 @@ class SkillIntegrator(BaseIntegrator):
         - assets/ (optional)
         - Any other subdirectories the package contains
 
+        **Cline Dual-Root Deployment** (Phase 2):
+        For Cline targets (target.name == "cline"), skills are deployed to TWO locations:
+        1. ``.cline/skills/`` -- Primary location where Cline reads skills natively
+        2. ``.clinerules/skills/`` -- Secondary location for co-location with rules,
+           workflows, and hooks in the .clinerules/ folder for organizational clarity
+
         Args:
             package_info: PackageInfo object with package metadata
             project_root: Root directory of the project
@@ -897,6 +903,21 @@ class SkillIntegrator(BaseIntegrator):
 
             shutil.copytree(package_path, target_skill_dir, ignore=_ignore_symlinks_and_apm)
             all_target_paths.append(target_skill_dir)
+
+            # Phase 2 Cline enhancement: Deploy skills to dual roots
+            # Primary: .cline/skills/ (Cline's native location)
+            # Secondary: .clinerules/skills/ (co-located with rules/workflows/hooks)
+            if target.name == "cline":
+                cline_secondary_dir = project_root / ".clinerules" / "skills" / skill_name
+                if cline_secondary_dir.exists():
+                    shutil.rmtree(cline_secondary_dir)
+                cline_secondary_dir.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(
+                    package_path,
+                    cline_secondary_dir,
+                    ignore=_ignore_symlinks_and_apm,
+                )
+                all_target_paths.append(cline_secondary_dir)
 
             if is_primary:
                 files_copied = sum(1 for _ in target_skill_dir.rglob("*") if _.is_file())
