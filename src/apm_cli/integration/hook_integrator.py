@@ -255,45 +255,56 @@ class HookIntegrator(BaseIntegrator):
         "osx",
     )
 
-    def find_hook_files(self, package_path: Path) -> list[Path]:
-        """Find all hook JSON files in a package.
+    def find_hook_files(self, package_path: Path) -> List[Path]:
+        """Find all hook files in a package (JSON, JavaScript, Python, Shell).
 
         Searches in:
         - .apm/hooks/ subdirectory (APM convention)
         - hooks/ subdirectory (Claude-native convention)
 
+        File types discovered:
+        - *.json: Traditional APM/Claude/Copilot hooks (merged into agent config)
+        - *.js: JavaScript hooks (Cline, executed via Node.js)
+        - *.py: Python hooks (Cline, executed via Python)
+        - *.sh: Shell hooks (Cline, executed via Bash)
+
         Args:
             package_path: Path to the package directory
 
         Returns:
-            List[Path]: List of absolute paths to hook JSON files
+            List[Path]: List of absolute paths to hook files (all types)
         """
         hook_files = []
         seen = set()
+        
+        # File patterns to search for (all hook types)
+        patterns = ("*.json", "*.js", "*.py", "*.sh")
 
         # Search in .apm/hooks/ (APM convention)
         apm_hooks = package_path / ".apm" / "hooks"
         if apm_hooks.exists():
-            for f in sorted(apm_hooks.glob("*.json")):
-                if f.is_symlink():
-                    continue
-                resolved = f.resolve()
-                if resolved not in seen:
-                    seen.add(resolved)
-                    hook_files.append(f)
+            for pattern in patterns:
+                for f in sorted(apm_hooks.glob(pattern)):
+                    if f.is_symlink():
+                        continue
+                    resolved = f.resolve()
+                    if resolved not in seen:
+                        seen.add(resolved)
+                        hook_files.append(f)
 
         # Search in hooks/ (Claude-native convention)
         hooks_dir = package_path / "hooks"
         if hooks_dir.exists():
-            for f in sorted(hooks_dir.glob("*.json")):
-                if f.is_symlink():
-                    continue
-                resolved = f.resolve()
-                if resolved not in seen:
-                    seen.add(resolved)
-                    hook_files.append(f)
+            for pattern in patterns:
+                for f in sorted(hooks_dir.glob(pattern)):
+                    if f.is_symlink():
+                        continue
+                    resolved = f.resolve()
+                    if resolved not in seen:
+                        seen.add(resolved)
+                        hook_files.append(f)
 
-        return hook_files
+        return sorted(hook_files)  # Sort for deterministic order
 
     def _parse_hook_json(self, hook_file: Path) -> dict | None:
         """Parse a hook JSON file and return the data dict.
@@ -868,6 +879,63 @@ class HookIntegrator(BaseIntegrator):
     # Target-driven API
     # ------------------------------------------------------------------
 
+    def _integrate_cline_hooks(
+        self,
+        package_info,
+        project_root: Path,
+        *,
+        force: bool = False,
+        managed_files: set = None,
+        diagnostics=None,
+    ) -> HookIntegrationResult:
+        """Integrate hooks for Cline by copying files to .clinerules/hooks/.
+
+        Unlike Claude/Cursor/Codex which merge hooks into JSON,
+        Cline supports multiple hook formats (JSON, JS, PY, SH)
+        deployed as individual files. HookExecutor handles runtime routing.
+
+        Hook files are copied to: .clinerules/hooks/<package>-<filename>
+        """
+        hook_files = self.find_hook_files(package_info.install_path)
+        if not hook_files:
+            return HookIntegrationResult(
+                files_integrated=0, files_updated=0,
+                files_skipped=0, target_paths=[],
+            )
+
+        target_dir = project_root / ".clinerules" / "hooks"
+        package_name = self._get_package_name(package_info)
+        hooks_integrated = 0
+        target_paths: List[Path] = []
+
+        for hook_file in hook_files:
+            # Only copy non-JSON hooks; JSON hooks would be merged in other targets
+            if hook_file.suffix == ".json":
+                # JSON hooks for Cline aren't typically used (use .js, .py, .sh instead)
+                # Skip them for now; could be added if needed
+                continue
+
+            # Copy hook file to .clinerules/hooks/<package>-<name>.<ext>
+            target_name = f"{package_name}-{hook_file.name}"
+            target_path = target_dir / target_name
+
+            if self.check_collision(
+                target_path, str(target_path.relative_to(project_root)),
+                managed_files, force, diagnostics=diagnostics,
+            ):
+                continue
+
+            target_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(hook_file, target_path)
+            hooks_integrated += 1
+            target_paths.append(target_path)
+
+        return HookIntegrationResult(
+            files_integrated=hooks_integrated, files_updated=0,
+            files_skipped=0, target_paths=target_paths,
+            scripts_copied=0,
+        )
+
     def integrate_hooks_for_target(
         self,
         target,
@@ -880,9 +948,9 @@ class HookIntegrator(BaseIntegrator):
     ) -> "HookIntegrationResult":
         """Integrate hooks for a single *target*.
 
-        Copilot uses individual JSON files (genuinely different pattern).
-        All other merge-based targets are dispatched via the
-        ``_MERGE_HOOK_TARGETS`` registry.
+        Copilot: Individual JSON files
+        Cline: Individual hook files (.js, .py, .sh, .json) copied to .clinerules/hooks/
+        Others (Claude/Cursor/Codex): Merged JSON into agent config
         """
         if target.name == "copilot":
             return self.integrate_package_hooks(
@@ -892,6 +960,13 @@ class HookIntegrator(BaseIntegrator):
                 managed_files=managed_files,
                 diagnostics=diagnostics,
                 target=target,
+            )
+        
+        if target.name == "cline":
+            return self._integrate_cline_hooks(
+                package_info, project_root,
+                force=force, managed_files=managed_files,
+                diagnostics=diagnostics,
             )
 
         config = _MERGE_HOOK_TARGETS.get(target.name)

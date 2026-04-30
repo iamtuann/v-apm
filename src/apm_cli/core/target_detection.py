@@ -1,8 +1,8 @@
 """Target detection for auto-selecting compilation and integration targets.
 
 This module implements the auto-detection pattern for determining which agent
-targets (Copilot, Claude, Cursor, OpenCode, Codex, Gemini) should be used
-based on existing project structure and configuration.
+targets (Copilot, Claude, Cursor, OpenCode, Codex, Gemini, Cline) should be
+used based on existing project structure and configuration.
 
 Detection priority (highest to lowest):
 1. Explicit --target flag (always wins)
@@ -14,6 +14,7 @@ Detection priority (highest to lowest):
    - .opencode/ only -> opencode
    - .codex/ only -> codex
    - .gemini/ only -> gemini
+   - .clinerules/ only -> cline
    - Multiple target folders -> all
    - None exist -> minimal (AGENTS.md only, no folder integration)
 
@@ -27,7 +28,7 @@ from typing import List, Literal, Optional, Tuple, Union  # noqa: F401, UP035
 import click
 
 # Valid target values (internal canonical form)
-TargetType = Literal["vscode", "claude", "cursor", "opencode", "codex", "gemini", "all", "minimal"]
+TargetType = Literal["vscode", "claude", "cursor", "opencode", "codex", "gemini", "cline", "all", "minimal"]
 
 # Compiler families used inside a multi-target frozenset. Narrower than
 # TargetType because the families are produced by _resolve_compile_target()
@@ -53,6 +54,7 @@ UserTargetType = Literal[
     "opencode",
     "codex",
     "gemini",
+    "cline",
     "all",
     "minimal",
 ]
@@ -89,6 +91,8 @@ def detect_target(  # noqa: PLR0911
             return "codex", "explicit --target flag"
         elif explicit_target == "gemini":
             return "gemini", "explicit --target flag"
+        elif explicit_target == "cline":
+            return "cline", "explicit --target flag"
         elif explicit_target == "all":
             return "all", "explicit --target flag"
 
@@ -106,6 +110,8 @@ def detect_target(  # noqa: PLR0911
             return "codex", "apm.yml target"
         elif config_target == "gemini":
             return "gemini", "apm.yml target"
+        elif config_target == "cline":
+            return "cline", "apm.yml target"
         elif config_target == "all":
             return "all", "apm.yml target"
 
@@ -116,6 +122,7 @@ def detect_target(  # noqa: PLR0911
     opencode_exists = (project_root / ".opencode").is_dir()
     codex_exists = (project_root / ".codex").is_dir()
     gemini_exists = (project_root / ".gemini").is_dir()
+    cline_exists = (project_root / ".clinerules").is_dir()
     detected = []
     if github_exists:
         detected.append(".github/")
@@ -129,6 +136,8 @@ def detect_target(  # noqa: PLR0911
         detected.append(".codex/")
     if gemini_exists:
         detected.append(".gemini/")
+    if cline_exists:
+        detected.append(".clinerules/")
 
     if len(detected) >= 2:
         return "all", f"detected {' and '.join(detected)} folders"
@@ -144,6 +153,8 @@ def detect_target(  # noqa: PLR0911
         return "codex", "detected .codex/ folder"
     elif gemini_exists:
         return "gemini", "detected .gemini/ folder"
+    elif cline_exists:
+        return "cline", "detected .clinerules/ folder"
     else:
         return "minimal", REASON_NO_TARGET_FOLDER
 

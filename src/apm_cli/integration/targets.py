@@ -392,6 +392,43 @@ KNOWN_TARGETS: dict[str, TargetProfile] = {
         user_root_resolver=lambda: _resolve_copilot_cowork_root(),
         requires_flag="copilot_cowork",
     ),
+    # Cline VS Code extension -- comprehensive customization support.
+    # Project scope: .clinerules/ (rules), .cline/skills/ (skills),
+    #                .clinerules/workflows/ (workflows), .clinerules/hooks/ (hooks)
+    # User scope: ~/Documents/Cline/{Rules,Workflows,Hooks} (Windows/macOS)
+    #             or ~/Cline/{Rules,Workflows,Hooks} (Linux fallback)
+    #             ~/.cline/skills/ (cross-platform for skills)
+    # Rules: plain Markdown files in .clinerules/ root
+    # Workflows: Markdown files in .clinerules/workflows/ (treated as agents)
+    # Skills: deploy to both .cline/skills/ (primary) and .clinerules/skills/ (co-located)
+    #         SkillIntegrator handles dual-root via special cline handling
+    # Hooks: support .js, .py, .sh, .json formats with HookExecutor routing
+    "cline": TargetProfile(
+        name="cline",
+        root_dir=".clinerules",
+        primitives={
+            "instructions": PrimitiveMapping(
+                "", ".md", "cline_rules"
+            ),
+            "agents": PrimitiveMapping(
+                "workflows", ".md", "cline_workflow",
+                deploy_root=".clinerules"
+            ),
+            "skills": PrimitiveMapping(
+                "skills", "/SKILL.md", "skill_standard",
+                deploy_root=".cline"
+            ),
+            "hooks": PrimitiveMapping(
+                "hooks", "*", "cline_hook",
+                deploy_root=".clinerules"
+            ),
+        },
+        auto_create=True,
+        detect_by_dir=True,
+        user_supported="partial",
+        user_root_resolver=lambda: _resolve_cline_global_root(),
+        unsupported_user_primitives=(),
+    ),
 }
 
 
@@ -404,6 +441,47 @@ def _resolve_copilot_cowork_root() -> Path | None:  # noqa: F821
     from apm_cli.integration.copilot_cowork_paths import resolve_copilot_cowork_skills_dir
 
     return resolve_copilot_cowork_skills_dir()
+
+
+def _resolve_cline_global_root() -> "Path | None":
+    """Resolve Cline's global configuration directory for user-scope deployment.
+
+    Cline supports per-primitive global paths:
+    - Rules: ~/Documents/Cline/Rules (Windows/macOS) or ~/Cline/Rules (Linux)
+    - Workflows: ~/Documents/Cline/Workflows (Windows/macOS) or ~/Cline/Workflows (Linux)
+    - Hooks: ~/Documents/Cline/Hooks (Windows/macOS) or ~/Cline/Hooks (Linux)
+    - Skills: ~/.cline/skills (cross-platform, handled separately by integrators)
+
+    This resolver returns the base directory (~/Documents/Cline or ~/Cline).
+    Integrators (InstructionIntegrator, AgentIntegrator, HookIntegrator) use this
+    as a reference and route to appropriate subdirectories.
+    SkillIntegrator always uses ~/.cline/skills regardless of this resolver.
+
+    Returns:
+        Path to ~/Documents/Cline (Windows/macOS) or ~/Cline (Linux), or None
+        if neither exists and cannot be created.
+    """
+    from pathlib import Path
+
+    home = Path.home()
+
+    # Try Documents/Cline first (Windows/macOS convention)
+    docs_cline = home / "Documents" / "Cline"
+    if docs_cline.exists():
+        return docs_cline
+
+    # Fallback to ~/Cline (Linux convention)
+    cline = home / "Cline"
+    if cline.exists():
+        return cline
+
+    # Prefer Documents if available, else fall back to ~/Cline (even if not yet created)
+    # This matches Cline's own detection logic
+    docs = home / "Documents"
+    if docs.exists():
+        return docs_cline  # Return path even if not yet created; integrators will create on demand
+    
+    return cline  # Linux fallback
 
 
 def _is_flag_enabled(flag_name: str) -> bool:

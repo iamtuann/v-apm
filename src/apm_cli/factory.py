@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from .adapters.client.codex import CodexClientAdapter
+from .adapters.client.cline import ClineClientAdapter
 from .adapters.client.copilot import CopilotClientAdapter
 from .adapters.client.cursor import CursorClientAdapter
 from .adapters.client.gemini import GeminiClientAdapter
@@ -36,6 +37,7 @@ class ClientFactory:
         """
         clients = {
             "copilot": CopilotClientAdapter,
+            "cline": ClineClientAdapter,
             "vscode": VSCodeClientAdapter,
             "codex": CodexClientAdapter,
             "cursor": CursorClientAdapter,
