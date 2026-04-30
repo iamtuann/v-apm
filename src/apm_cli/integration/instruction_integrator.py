@@ -28,6 +28,7 @@ class InstructionIntegrator(BaseIntegrator):
     * Copilot: ``.github/instructions/`` (verbatim, preserving applyTo:)
     * Cursor: ``.cursor/rules/`` (``.mdc`` format, applyTo: -> globs:)
     * Claude Code: ``.claude/rules/`` (``.md`` format, applyTo: -> paths:)
+    * Cline: ``.clinerules/`` (verbatim, plain Markdown rules)
     * Gemini CLI: compile-only (GEMINI.md) -- no per-file rule deployment
     """
 
@@ -72,6 +73,7 @@ class InstructionIntegrator(BaseIntegrator):
 
         * ``cursor_rules``  -- convert ``applyTo:`` to ``globs:`` frontmatter
         * ``claude_rules``  -- convert ``applyTo:`` to ``paths:`` frontmatter
+        * ``cline_rules``   -- copy verbatim (plain markdown for Cline rules)
         * anything else     -- copy verbatim (identity transform)
         """
         mapping = target.primitives.get("instructions")
