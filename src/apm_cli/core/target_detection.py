@@ -23,29 +23,55 @@ are accepted as aliases and map to the same internal value.
 """
 
 from pathlib import Path
-from typing import List, Literal, Optional, Tuple, Union
+from typing import List, Literal, Optional, Tuple, Union  # noqa: F401, UP035
 
 import click
 
 # Valid target values (internal canonical form)
 TargetType = Literal["vscode", "claude", "cursor", "opencode", "codex", "gemini", "cline", "all", "minimal"]
 
+# Compiler families used inside a multi-target frozenset. Narrower than
+# TargetType because the families are produced by _resolve_compile_target()
+# (in the compile CLI) from CLI-validated target names.
+CompileFamily = Literal["agents", "claude", "gemini"]
+
+# Compile target: either a single TargetType string or a frozenset of compiler
+# families ({"agents", "claude", "gemini"}) for multi-target lists.
+CompileTargetType = Union[TargetType, frozenset[CompileFamily]]  # noqa: UP007
+
+# Detection reason returned by detect_target() when no integration folder is
+# present. Exported as a constant so consumers can compare with equality
+# instead of substring matching.
+REASON_NO_TARGET_FOLDER = "no target folder found"
+
 # User-facing target values (includes aliases accepted by CLI)
-UserTargetType = Literal["copilot", "vscode", "agents", "claude", "cursor", "opencode", "codex", "gemini", "cline", "all", "minimal"]
+UserTargetType = Literal[
+    "copilot",
+    "vscode",
+    "agents",
+    "claude",
+    "cursor",
+    "opencode",
+    "codex",
+    "gemini",
+    "cline",
+    "all",
+    "minimal",
+]
 
 
-def detect_target(
+def detect_target(  # noqa: PLR0911
     project_root: Path,
-    explicit_target: Optional[str] = None,
-    config_target: Optional[str] = None,
-) -> Tuple[TargetType, str]:
+    explicit_target: str | None = None,
+    config_target: str | None = None,
+) -> tuple[TargetType, str]:
     """Detect the appropriate target for compilation and integration.
-    
+
     Args:
         project_root: Root directory of the project
         explicit_target: Explicitly provided --target flag value
         config_target: Target from apm.yml top-level 'target' field
-        
+
     Returns:
         Tuple of (target, reason) where:
         - target: The detected target type
@@ -88,7 +114,7 @@ def detect_target(
             return "cline", "apm.yml target"
         elif config_target == "all":
             return "all", "apm.yml target"
-    
+
     # Priority 3: Auto-detect from existing folders
     github_exists = (project_root / ".github").exists()
     claude_exists = (project_root / ".claude").exists()
@@ -130,56 +156,65 @@ def detect_target(
     elif cline_exists:
         return "cline", "detected .clinerules/ folder"
     else:
-        return "minimal", "no target folder found"
+        return "minimal", REASON_NO_TARGET_FOLDER
 
 
-def should_compile_agents_md(target: TargetType) -> bool:
+def should_compile_agents_md(target: CompileTargetType) -> bool:
     """Check if AGENTS.md should be compiled.
 
     AGENTS.md is generated for vscode, codex, gemini, all, and minimal
     targets.  Gemini needs it because GEMINI.md imports AGENTS.md.
-    
+
     Args:
-        target: The detected or configured target
-        
+        target: The detected or configured target. May be a string or a
+            frozenset of compiler families for multi-target lists.
+
     Returns:
         bool: True if AGENTS.md should be generated
     """
+    if isinstance(target, frozenset):
+        return "agents" in target or "gemini" in target
     return target in ("vscode", "opencode", "codex", "gemini", "all", "minimal")
 
 
-def should_compile_claude_md(target: TargetType) -> bool:
+def should_compile_claude_md(target: CompileTargetType) -> bool:
     """Check if CLAUDE.md should be compiled.
 
     Args:
-        target: The detected or configured target
+        target: The detected or configured target. May be a string or a
+            frozenset of compiler families for multi-target lists.
 
     Returns:
         bool: True if CLAUDE.md should be generated
     """
+    if isinstance(target, frozenset):
+        return "claude" in target
     return target in ("claude", "all")
 
 
-def should_compile_gemini_md(target: TargetType) -> bool:
+def should_compile_gemini_md(target: CompileTargetType) -> bool:
     """Check if GEMINI.md should be compiled.
 
     Args:
-        target: The detected or configured target
+        target: The detected or configured target. May be a string or a
+            frozenset of compiler families for multi-target lists.
 
     Returns:
         bool: True if GEMINI.md should be generated
     """
+    if isinstance(target, frozenset):
+        return "gemini" in target
     return target in ("gemini", "all")
 
 
 def get_target_description(target: UserTargetType) -> str:
     """Get a human-readable description of what will be generated for a target.
-    
+
     Accepts both internal target types and user-facing aliases.
-    
+
     Args:
         target: The target type (internal or user-facing alias)
-        
+
     Returns:
         str: Description of output files
     """
@@ -221,8 +256,8 @@ TARGET_ALIASES: dict[str, str] = {
 
 
 def normalize_target_list(
-    value: Union[str, List[str], None],
-) -> Optional[List[str]]:
+    value: str | list[str] | None,
+) -> list[str] | None:
     """Normalize a user-provided target value to a list of canonical names.
 
     Handles:
@@ -243,7 +278,7 @@ def normalize_target_list(
     if value is None:
         return None
 
-    raw: List[str] = [value] if isinstance(value, str) else list(value)
+    raw: list[str] = [value] if isinstance(value, str) else list(value)
 
     # "all" anywhere in the input means "every target" -- expand to the
     # full sorted list of canonical targets.
@@ -251,7 +286,7 @@ def normalize_target_list(
         return sorted(ALL_CANONICAL_TARGETS)
 
     seen: set[str] = set()
-    result: List[str] = []
+    result: list[str] = []
     for item in raw:
         canonical = TARGET_ALIASES.get(item, item)
         if canonical not in seen:
@@ -272,10 +307,10 @@ VALID_TARGET_VALUES: frozenset[str] = (
 
 
 def parse_target_field(
-    value: Union[str, List[str], None],
+    value: str | list[str] | None,
     *,
-    source_path: Optional[Path] = None,
-) -> Union[str, List[str], None]:
+    source_path: Path | None = None,
+) -> str | list[str] | None:
     """Parse, validate, and normalize a target value from any entry point.
 
     Single source of truth for the ``target`` field, shared by the
@@ -333,17 +368,21 @@ def parse_target_field(
         raw_parts = []
         for item in value:
             if not isinstance(item, str):
-                raise ValueError(_target_error(
-                    f"each entry must be a string, got {type(item).__name__}",
-                    source_path,
-                ))
+                raise ValueError(
+                    _target_error(
+                        f"each entry must be a string, got {type(item).__name__}",
+                        source_path,
+                    )
+                )
             if item.strip():
                 raw_parts.append(item.strip().lower())
     else:
-        raise ValueError(_target_error(
-            f"expected string or list of strings, got {type(value).__name__}",
-            source_path,
-        ))
+        raise ValueError(
+            _target_error(
+                f"expected string or list of strings, got {type(value).__name__}",
+                source_path,
+            )
+        )
 
     if not raw_parts:
         raise ValueError(_target_error("target value must not be empty", source_path))
@@ -351,19 +390,23 @@ def parse_target_field(
     # ---- validate every token ----
     for p in raw_parts:
         if p not in VALID_TARGET_VALUES:
-            raise ValueError(_target_error(
-                f"'{p}' is not a valid target. "
-                f"Choose from: {', '.join(sorted(VALID_TARGET_VALUES))}",
-                source_path,
-            ))
+            raise ValueError(
+                _target_error(
+                    f"'{p}' is not a valid target. "
+                    f"Choose from: {', '.join(sorted(VALID_TARGET_VALUES))}",
+                    source_path,
+                )
+            )
 
     # ---- "all" is exclusive ----
     if "all" in raw_parts:
         if len(raw_parts) > 1:
-            raise ValueError(_target_error(
-                "'all' cannot be combined with other targets",
-                source_path,
-            ))
+            raise ValueError(
+                _target_error(
+                    "'all' cannot be combined with other targets",
+                    source_path,
+                )
+            )
         return "all"
 
     # Single-token input is returned as-is (no alias resolution).  This
@@ -381,7 +424,7 @@ def parse_target_field(
 
     # Multi-token: resolve aliases + dedupe, preserving input order.
     seen: set[str] = set()
-    result: List[str] = []
+    result: list[str] = []
     for p in raw_parts:
         canonical = TARGET_ALIASES.get(p, p)
         if canonical not in seen:
@@ -393,7 +436,7 @@ def parse_target_field(
     return result
 
 
-def _target_error(message: str, source_path: Optional[Path]) -> str:
+def _target_error(message: str, source_path: Path | None) -> str:
     """Format a target validation error, naming the source file when known."""
     if source_path is not None:
         return f"Invalid 'target' in {source_path}: {message}"
@@ -419,10 +462,10 @@ class TargetParamType(click.ParamType):
 
     def convert(
         self,
-        value: Union[str, List[str], None],
-        param: Optional[click.Parameter],
-        ctx: Optional[click.Context],
-    ) -> Union[str, List[str], None]:
+        value: str | list[str] | None,
+        param: click.Parameter | None,
+        ctx: click.Context | None,
+    ) -> str | list[str] | None:
         try:
             return parse_target_field(value)
         except ValueError as e:
