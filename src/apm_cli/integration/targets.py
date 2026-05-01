@@ -518,15 +518,10 @@ def get_integration_prefixes(targets=None) -> tuple:
     prefixes: list[str] = []
     seen: set[str] = set()
     for t in source:
-        # Dynamic-root targets (cowork) use cowork:// prefix in lockfile.
-        # Check the *capability* (user_root_resolver is not None) rather
-        # than the *run-time state* (resolved_deploy_root is not None).
-        # The static KNOWN_TARGETS registry always has resolved_deploy_root
-        # = None (the resolver fires only on per-install copies created by
-        # for_scope()), but cleanup code passes targets=None which falls
-        # back to the static registry.  Using the capability flag ensures
-        # cowork:// entries pass prefix validation during cleanup/uninstall.
-        if t.user_root_resolver is not None:
+        # Dynamic-root lockfile URI prefix is only for Copilot Cowork.
+        # Other resolver-backed targets (e.g. cline) still use normal
+        # filesystem prefixes and must keep their target prefixes.
+        if t.name == "copilot-cowork":
             from apm_cli.integration.copilot_cowork_paths import COWORK_LOCKFILE_PREFIX
 
             if COWORK_LOCKFILE_PREFIX not in seen:

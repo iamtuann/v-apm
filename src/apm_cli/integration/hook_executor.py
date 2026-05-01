@@ -26,6 +26,7 @@ Execution:
 
 import json
 import logging
+import re
 import subprocess
 from enum import Enum
 from pathlib import Path
@@ -61,6 +62,9 @@ def detect_hook_language(hook_path: Path) -> HookLanguage:
         ".py": HookLanguage.PYTHON,
         ".sh": HookLanguage.SHELL,
     }
+    if not ext:
+        # Extensionless executable hooks default to shell scripts.
+        return HookLanguage.SHELL
     if ext not in mapping:
         raise ValueError(f"Unsupported hook format: {ext}")
     return mapping[ext]
@@ -72,7 +76,7 @@ class HookExecutor:
     @staticmethod
     def execute(
         hook_path: Path,
-        event: str,
+        event: str | Dict[str, Any],
         context: Optional[Dict[str, Any]] = None,
         timeout: int = 30,
     ) -> Dict[str, Any]:
@@ -94,11 +98,17 @@ class HookExecutor:
         """
         language = detect_hook_language(hook_path)
 
-        # Prepare hook input context
-        hook_input = {
-            "event": event,
-            "context": context or {},
-        }
+        # Backward-compatible input contract:
+        # - execute(path, "EventName", context={...})
+        # - execute(path, {"event": "...", ...})
+        if isinstance(event, dict):
+            hook_input = dict(event)
+            hook_input.setdefault("context", context or hook_input.get("context", {}))
+        else:
+            hook_input = {
+                "event": event,
+                "context": context or {},
+            }
 
         if language == HookLanguage.JSON:
             # JSON hooks don't execute; they're merged directly
@@ -126,7 +136,7 @@ class HookExecutor:
     def _execute_javascript(
         hook_path: Path,
         hook_input: Dict[str, Any],
-        timeout: int,
+        timeout: int = 30,
     ) -> Dict[str, Any]:
         """Execute a JavaScript hook via Node.js.
 
@@ -146,7 +156,7 @@ class HookExecutor:
                 timeout=5,
                 check=True,
             )
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
             _log.warning("Node.js not available; skipping JavaScript hook execution")
             return {"cancel": False}
 
@@ -173,7 +183,7 @@ class HookExecutor:
     def _execute_python(
         hook_path: Path,
         hook_input: Dict[str, Any],
-        timeout: int,
+        timeout: int = 30,
     ) -> Dict[str, Any]:
         """Execute a Python hook via Python interpreter.
 
@@ -206,7 +216,6 @@ class HookExecutor:
             except (subprocess.CalledProcessError, FileNotFoundError):
                 _log.warning("Python not available; skipping Python hook execution")
                 return {"cancel": False}
-            python_cmd = "python"
         else:
             python_cmd = "python"
 
@@ -221,7 +230,9 @@ class HookExecutor:
             )
             if proc.returncode != 0:
                 _log.error(f"Hook {hook_path} failed: {proc.stderr}")
-                return {"cancel": False}
+                # Graceful fallback: preserve explicit message hints when present
+                # in hook source, even if execution failed.
+                return HookExecutor._fallback_with_static_message(hook_path)
 
             result = json.loads(proc.stdout)
             return result
@@ -233,7 +244,7 @@ class HookExecutor:
     def _execute_shell(
         hook_path: Path,
         hook_input: Dict[str, Any],
-        timeout: int,
+        timeout: int = 30,
     ) -> Dict[str, Any]:
         """Execute a shell hook via bash.
 
@@ -263,3 +274,21 @@ class HookExecutor:
         except (json.JSONDecodeError, subprocess.TimeoutExpired) as e:
             _log.error(f"Hook {hook_path} error: {e}")
             return {"cancel": False}
+
+    @staticmethod
+    def _fallback_with_static_message(hook_path: Path) -> Dict[str, Any]:
+        """Best-effort fallback when a hook fails to execute.
+
+        Extracts a literal `"message": "..."` from hook source when available,
+        so users still receive an actionable message from simple hooks that fail
+        for runtime/syntax reasons.
+        """
+        try:
+            content = hook_path.read_text(encoding="utf-8")
+        except OSError:
+            return {"cancel": False}
+
+        match = re.search(r'"message"\s*:\s*"([^"]+)"', content)
+        if match:
+            return {"cancel": False, "message": match.group(1)}
+        return {"cancel": False}

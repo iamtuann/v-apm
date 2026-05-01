@@ -10,6 +10,7 @@ import pytest  # noqa: F401
 
 from apm_cli.integration.base_integrator import IntegrationResult
 from apm_cli.integration.instruction_integrator import InstructionIntegrator
+from apm_cli.integration.targets import KNOWN_TARGETS
 from apm_cli.models.apm_package import APMPackage, GitReferenceType, PackageInfo, ResolvedReference
 
 
@@ -496,6 +497,266 @@ class TestInstructionNameCollision:
 
         # Last write wins
         assert (target_dir / "python.instructions.md").read_text() == "# Package B rules"
+
+
+class TestClineRulesIntegration:
+    """Test Cline Rules integration (.clinerules/ root, plain Markdown)."""
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.project_root = Path(self.temp_dir)
+        self.integrator = InstructionIntegrator()
+
+    def teardown_method(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _make_package_info(self, package_dir, name="test-pkg"):
+        package = APMPackage(
+            name=name,
+            version="1.0.0",
+            package_path=package_dir,
+            source=f"github.com/test/{name}",
+        )
+        resolved_ref = ResolvedReference(
+            original_ref="main",
+            ref_type=GitReferenceType.BRANCH,
+            resolved_commit="abc123",
+            ref_name="main",
+        )
+        return PackageInfo(
+            package=package,
+            install_path=package_dir,
+            resolved_reference=resolved_ref,
+            installed_at=datetime.now().isoformat(),
+        )
+
+    def test_cline_rules_deploy_to_clinerules_root(self):
+        """Cline Rules deploy to .clinerules/ (no subdir)."""
+        pkg = self.project_root / "package"
+        rules_dir = pkg / ".apm" / "cline-rules"
+        rules_dir.mkdir(parents=True)
+        (rules_dir / "coding-standards.md").write_text(
+            "---\napplyTo: 'src/**/*.ts'\n---\n# Coding Standards"
+        )
+
+        pkg_info = self._make_package_info(pkg)
+        result = self.integrator.integrate_instructions_for_target(
+            KNOWN_TARGETS["cline"], pkg_info, self.project_root
+        )
+
+        assert result.files_integrated == 1
+        target = self.project_root / ".clinerules" / "coding-standards.md"
+        assert target.exists()
+        assert "# Coding Standards" in target.read_text()
+
+    def test_cline_rules_creates_clinerules_dir(self):
+        """Creates .clinerules/ if it doesn't exist."""
+        assert not (self.project_root / ".clinerules").exists()
+
+        pkg = self.project_root / "package"
+        rules_dir = pkg / ".apm" / "cline-rules"
+        rules_dir.mkdir(parents=True)
+        (rules_dir / "rules.md").write_text("# Rules")
+
+        pkg_info = self._make_package_info(pkg)
+        self.integrator.integrate_instructions_for_target(
+            KNOWN_TARGETS["cline"], pkg_info, self.project_root
+        )
+
+        assert (self.project_root / ".clinerules").exists()
+        assert (self.project_root / ".clinerules" / "rules.md").exists()
+
+    def test_cline_rules_preserves_structure_with_subdirs(self):
+        """Cline Rules preserves directory structure (coding/, testing/, etc.)."""
+        pkg = self.project_root / "package"
+        rules_dir = pkg / ".apm" / "cline-rules"
+        rules_dir.mkdir(parents=True)
+        
+        # Create structured rules
+        (rules_dir / "coding-standards.md").write_text("# Coding Standards")
+        coding_dir = rules_dir / "coding"
+        coding_dir.mkdir()
+        (coding_dir / "typescript.md").write_text("# TypeScript Coding")
+        (coding_dir / "python.md").write_text("# Python Coding")
+        
+        testing_dir = rules_dir / "testing"
+        testing_dir.mkdir()
+        (testing_dir / "unit.md").write_text("# Unit Testing")
+
+        pkg_info = self._make_package_info(pkg)
+        result = self.integrator.integrate_instructions_for_target(
+            KNOWN_TARGETS["cline"], pkg_info, self.project_root
+        )
+
+        assert result.files_integrated == 4
+        assert (self.project_root / ".clinerules" / "coding-standards.md").exists()
+        assert (self.project_root / ".clinerules" / "coding" / "typescript.md").exists()
+        assert (self.project_root / ".clinerules" / "coding" / "python.md").exists()
+        assert (self.project_root / ".clinerules" / "testing" / "unit.md").exists()
+
+    def test_cline_rules_plain_markdown_no_transformation(self):
+        """Cline Rules are plain Markdown (no Claude/Cursor-style formatting)."""
+        pkg = self.project_root / "package"
+        rules_dir = pkg / ".apm" / "cline-rules"
+        rules_dir.mkdir(parents=True)
+        
+        original_content = """# Cline Agent Rules
+
+Use Cline for code analysis and generation.
+
+## Best Practices
+
+- Keep rules focused
+- Avoid conflicting guidance
+- Document exceptions
+"""
+        (rules_dir / "cline-usage.md").write_text(original_content)
+
+        pkg_info = self._make_package_info(pkg)
+        self.integrator.integrate_instructions_for_target(
+            KNOWN_TARGETS["cline"], pkg_info, self.project_root
+        )
+
+        target = self.project_root / ".clinerules" / "cline-usage.md"
+        # Content should be identical (no transformation)
+        assert target.read_text() == original_content
+
+    def test_cline_rules_collision_detection(self):
+        """Cline Rules respect collision detection like other targets."""
+        # Create user-authored rule
+        target_dir = self.project_root / ".clinerules"
+        target_dir.mkdir(parents=True)
+        (target_dir / "user-rules.md").write_text("# User-authored rules")
+
+        # Package tries to deploy same-named rule
+        pkg = self.project_root / "package"
+        rules_dir = pkg / ".apm" / "cline-rules"
+        rules_dir.mkdir(parents=True)
+        (rules_dir / "user-rules.md").write_text("# APM rules")
+
+        pkg_info = self._make_package_info(pkg)
+        result = self.integrator.integrate_instructions_for_target(
+            KNOWN_TARGETS["cline"], pkg_info, self.project_root, managed_files=set()
+        )
+
+        # Should be skipped (user-authored)
+        assert result.files_skipped == 1
+        assert (target_dir / "user-rules.md").read_text() == "# User-authored rules"
+
+    def test_cline_rules_force_overwrite(self):
+        """Force flag overwrites user-authored Cline Rules."""
+        target_dir = self.project_root / ".clinerules"
+        target_dir.mkdir(parents=True)
+        (target_dir / "rules.md").write_text("# User version")
+
+        pkg = self.project_root / "package"
+        rules_dir = pkg / ".apm" / "cline-rules"
+        rules_dir.mkdir(parents=True)
+        (rules_dir / "rules.md").write_text("# APM version")
+
+        pkg_info = self._make_package_info(pkg)
+        result = self.integrator.integrate_instructions_for_target(
+            KNOWN_TARGETS["cline"], pkg_info, self.project_root, force=True, managed_files=set()
+        )
+
+        assert result.files_integrated == 1
+        assert (target_dir / "rules.md").read_text() == "# APM version"
+
+    def test_cline_rules_multiple_packages(self):
+        """Multiple packages can deploy Cline Rules (last-wins for collisions)."""
+        # Package A
+        pkg_a = self.project_root / "pkg-a"
+        rules_a = pkg_a / ".apm" / "cline-rules"
+        rules_a.mkdir(parents=True)
+        (rules_a / "standards.md").write_text("# Package A standards")
+        info_a = self._make_package_info(pkg_a, "pkg-a")
+
+        # Package B
+        pkg_b = self.project_root / "pkg-b"
+        rules_b = pkg_b / ".apm" / "cline-rules"
+        rules_b.mkdir(parents=True)
+        (rules_b / "standards.md").write_text("# Package B standards")
+        info_b = self._make_package_info(pkg_b, "pkg-b")
+
+        # Deploy both
+        self.integrator.integrate_instructions_for_target(KNOWN_TARGETS["cline"], info_a, self.project_root)
+        self.integrator.integrate_instructions_for_target(KNOWN_TARGETS["cline"], info_b, self.project_root)
+
+        # Last wins
+        target = self.project_root / ".clinerules" / "standards.md"
+        assert (target).read_text() == "# Package B standards"
+
+    def test_cline_rules_sync_cleanup(self):
+        """sync_integration cleans up Cline Rules for uninstalled packages."""
+        target_dir = self.project_root / ".clinerules"
+        target_dir.mkdir(parents=True)
+        (target_dir / "cline-rules.md").write_text("# Rules")
+
+        managed = {".clinerules/cline-rules.md"}
+        apm_package = Mock()
+        result = self.integrator.sync_for_target(
+            KNOWN_TARGETS["cline"], apm_package, self.project_root, managed_files=managed
+        )
+
+        assert result["files_removed"] == 1
+        assert not (target_dir / "cline-rules.md").exists()
+
+    def test_cline_rules_no_github_interference(self):
+        """Cline Rules (.clinerules/) don't interfere with GitHub/Claude (.github/)."""
+        # Deploy to both targets
+        pkg = self.project_root / "package"
+        gh_rules = pkg / ".apm" / "instructions"
+        gh_rules.mkdir(parents=True)
+        (gh_rules / "github-rule.md").write_text("# GitHub rule")
+
+        cline_rules = pkg / ".apm" / "cline-rules"
+        cline_rules.mkdir(parents=True)
+        (cline_rules / "cline-rule.md").write_text("# Cline rule")
+
+        pkg_info = self._make_package_info(pkg)
+        
+        # GitHub rules
+        self.integrator.integrate_instructions_for_target(
+            KNOWN_TARGETS["copilot"], pkg_info, self.project_root
+        )
+        # Cline rules
+        self.integrator.integrate_instructions_for_target(
+            KNOWN_TARGETS["cline"], pkg_info, self.project_root
+        )
+
+        # Both should exist, independent
+        assert (self.project_root / ".github" / "instructions" / "github-rule.md").exists()
+        assert (self.project_root / ".clinerules" / "cline-rule.md").exists()
+
+    def test_cline_rules_target_paths_returned(self):
+        """Result target_paths are absolute for deployed_files tracking."""
+        pkg = self.project_root / "package"
+        rules_dir = pkg / ".apm" / "cline-rules"
+        rules_dir.mkdir(parents=True)
+        (rules_dir / "rules.md").write_text("# Rules")
+
+        pkg_info = self._make_package_info(pkg)
+        result = self.integrator.integrate_instructions_for_target(
+            KNOWN_TARGETS["cline"], pkg_info, self.project_root
+        )
+
+        assert len(result.target_paths) == 1
+        tp = result.target_paths[0]
+        assert tp.is_absolute()
+        assert tp == self.project_root / ".clinerules" / "rules.md"
+
+    def test_cline_rules_empty_when_no_cline_rules_files(self):
+        """Returns zero result when package has no cline-rules/ files."""
+        pkg = self.project_root / "package"
+        pkg.mkdir()
+
+        pkg_info = self._make_package_info(pkg)
+        result = self.integrator.integrate_instructions_for_target(
+            KNOWN_TARGETS["cline"], pkg_info, self.project_root
+        )
+
+        assert result.files_integrated == 0
+        assert result.target_paths == []
 
 
 # ==================================================================
