@@ -12,6 +12,7 @@ Tests cover:
 import json
 import shutil
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -22,6 +23,7 @@ from apm_cli.integration.hook_integrator import (
     HookIntegrator,
     _filter_hook_files_for_target,
 )
+from apm_cli.integration.targets import KNOWN_TARGETS
 from apm_cli.models.apm_package import APMPackage, PackageInfo
 
 
@@ -181,6 +183,26 @@ class TestHookDiscovery:
         """Integration is always enabled (zero-config)."""
         integrator = HookIntegrator()
         assert integrator.should_integrate(temp_project)
+
+    def test_cline_hooks_user_scope_deploys_to_global_hooks_dir(self, temp_project):
+        """User-scope Cline hooks deploy to <resolved>/Hooks/."""
+        pkg_dir = temp_project / "pkg"
+        hooks_dir = pkg_dir / ".apm" / "hooks"
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+        (hooks_dir / "validate.py").write_text("print('{\"cancel\": false}')")
+
+        integrator = HookIntegrator()
+        scoped_target = replace(
+            KNOWN_TARGETS["cline"],
+            resolved_deploy_root=temp_project / "Documents" / "Cline",
+        )
+        result = integrator.integrate_hooks_for_target(
+            scoped_target,
+            _make_package_info(pkg_dir),
+            temp_project,
+        )
+        assert result.files_integrated == 1
+        assert (temp_project / "Documents" / "Cline" / "Hooks" / "pkg-validate.py").exists()
 
 
 # ─── Parsing tests ────────────────────────────────────────────────────────────

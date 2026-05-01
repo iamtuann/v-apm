@@ -2,6 +2,7 @@
 
 import shutil
 import tempfile
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock
@@ -757,6 +758,25 @@ Use Cline for code analysis and generation.
 
         assert result.files_integrated == 0
         assert result.target_paths == []
+
+    def test_cline_rules_user_scope_deploys_to_global_rules_dir(self):
+        """User-scope Cline rules deploy to <resolved>/Rules/."""
+        pkg = self.project_root / "package"
+        rules_dir = pkg / ".apm" / "cline-rules"
+        rules_dir.mkdir(parents=True)
+        (rules_dir / "global-rule.md").write_text("# Global Rule")
+
+        scoped_target = replace(
+            KNOWN_TARGETS["cline"],
+            resolved_deploy_root=self.project_root / "Documents" / "Cline",
+        )
+        pkg_info = self._make_package_info(pkg)
+        result = self.integrator.integrate_instructions_for_target(
+            scoped_target, pkg_info, self.project_root
+        )
+
+        assert result.files_integrated == 1
+        assert (self.project_root / "Documents" / "Cline" / "Rules" / "global-rule.md").exists()
 
 
 # ==================================================================

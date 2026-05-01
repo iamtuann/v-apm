@@ -881,6 +881,7 @@ class HookIntegrator(BaseIntegrator):
 
     def _integrate_cline_hooks(
         self,
+        target,
         package_info,
         project_root: Path,
         *,
@@ -903,7 +904,10 @@ class HookIntegrator(BaseIntegrator):
                 files_skipped=0, target_paths=[],
             )
 
-        target_dir = project_root / ".clinerules" / "hooks"
+        if target.resolved_deploy_root is not None:
+            target_dir = target.resolved_deploy_root / "Hooks"
+        else:
+            target_dir = project_root / ".clinerules" / "hooks"
         package_name = self._get_package_name(package_info)
         hooks_integrated = 0
         target_paths: List[Path] = []
@@ -964,7 +968,9 @@ class HookIntegrator(BaseIntegrator):
         
         if target.name == "cline":
             return self._integrate_cline_hooks(
-                package_info, project_root,
+                target,
+                package_info,
+                project_root,
                 force=force, managed_files=managed_files,
                 diagnostics=diagnostics,
             )
@@ -1016,8 +1022,13 @@ class HookIntegrator(BaseIntegrator):
         for t in source:
             if t.supports("hooks"):
                 sm = t.primitives["hooks"]
-                effective_root = sm.deploy_root or t.root_dir
-                hook_prefixes.append(f"{effective_root}/hooks/")
+                if t.name == "cline" and t.resolved_deploy_root is not None:
+                    cline_hooks_dir = t.resolved_deploy_root / "Hooks"
+                    rel_prefix = portable_relpath(cline_hooks_dir, project_root).rstrip("/")
+                    hook_prefixes.append(f"{rel_prefix}/")
+                else:
+                    effective_root = sm.deploy_root or t.root_dir
+                    hook_prefixes.append(f"{effective_root}/hooks/")
         hook_prefix_tuple = tuple(hook_prefixes)
 
         if managed_files is not None:

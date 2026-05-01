@@ -1,11 +1,13 @@
 """Tests for agent integration functionality."""
 
 import tempfile
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock
 
 from apm_cli.integration import AgentIntegrator
+from apm_cli.integration.targets import KNOWN_TARGETS
 from apm_cli.models.apm_package import APMPackage, GitReferenceType, PackageInfo, ResolvedReference
 
 
@@ -156,6 +158,37 @@ class TestAgentIntegrator:
 
         assert result.files_integrated == 1
         assert (self.project_root / ".github" / "agents").exists()
+
+    def test_cline_agents_user_scope_deploys_to_global_workflows_dir(self):
+        """User-scope Cline workflows deploy to <resolved>/Workflows/."""
+        package_dir = self.project_root / "package"
+        apm_agents = package_dir / ".apm" / "agents"
+        apm_agents.mkdir(parents=True)
+        (apm_agents / "release.md").write_text("# Release Workflow")
+
+        package = APMPackage(name="test-pkg", version="1.0.0", package_path=package_dir)
+        resolved_ref = ResolvedReference(
+            original_ref="main",
+            ref_type=GitReferenceType.BRANCH,
+            resolved_commit="abc123",
+            ref_name="main",
+        )
+        package_info = PackageInfo(
+            package=package,
+            install_path=package_dir,
+            resolved_reference=resolved_ref,
+            installed_at=datetime.now().isoformat(),
+        )
+        scoped_target = replace(
+            KNOWN_TARGETS["cline"],
+            resolved_deploy_root=self.project_root / "Documents" / "Cline",
+        )
+        result = self.integrator.integrate_agents_for_target(
+            scoped_target, package_info, self.project_root
+        )
+
+        assert result.files_integrated == 1
+        assert (self.project_root / "Documents" / "Cline" / "Workflows" / "release.md").exists()
 
     def test_integrate_package_agents_always_overwrites(self):
         """Test that integration always overwrites existing files."""

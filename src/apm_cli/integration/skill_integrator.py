@@ -705,7 +705,9 @@ class SkillIntegrator(BaseIntegrator):
             is_primary = idx == 0  # first active target owns diagnostics
             skills_mapping = target.primitives["skills"]
             # Dynamic-root targets (cowork): use resolved_deploy_root.
-            if target.resolved_deploy_root is not None:
+            if target.name == "cline" and target.resolved_deploy_root is not None:
+                target_skills_root = project_root / ".cline" / "skills"
+            elif target.resolved_deploy_root is not None:
                 target_skills_root = target.resolved_deploy_root
             else:
                 effective_root = skills_mapping.deploy_root or target.root_dir
@@ -831,7 +833,11 @@ class SkillIntegrator(BaseIntegrator):
             is_primary = idx == 0  # first active target owns diagnostics
             skills_mapping = target.primitives["skills"]
             # Dynamic-root targets (cowork): use resolved_deploy_root.
-            if target.resolved_deploy_root is not None:
+            if target.name == "cline" and target.resolved_deploy_root is not None:
+                # Cline global/user-scope stores skills in ~/.cline/skills/
+                # (separate from ~/Documents/Cline/{Rules,Workflows,Hooks}).
+                target_skill_dir = project_root / ".cline" / "skills" / skill_name
+            elif target.resolved_deploy_root is not None:
                 target_skill_dir = target.resolved_deploy_root / skill_name
             else:
                 effective_root = skills_mapping.deploy_root or target.root_dir
@@ -906,7 +912,9 @@ class SkillIntegrator(BaseIntegrator):
                 files_copied = sum(1 for _ in target_skill_dir.rglob("*") if _.is_file())
 
             # Promote sub-skills for this target
-            if target.resolved_deploy_root is not None:
+            if target.name == "cline" and target.resolved_deploy_root is not None:
+                target_skills_root = project_root / ".cline" / "skills"
+            elif target.resolved_deploy_root is not None:
                 target_skills_root = target.resolved_deploy_root
             else:
                 target_skills_root = project_root / effective_root / "skills"

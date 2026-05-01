@@ -82,6 +82,10 @@ class InstructionIntegrator(BaseIntegrator):
 
         effective_root = mapping.deploy_root or target.root_dir
         target_root = project_root / effective_root
+        # Cline global/user-scope uses per-primitive folders under
+        # ~/Documents/Cline (or ~/Cline fallback): Rules/, Workflows/, Hooks/.
+        if target.name == "cline" and target.resolved_deploy_root is not None:
+            target_root = target.resolved_deploy_root / "Rules"
         if not target.auto_create and not (project_root / target.root_dir).is_dir():
             return IntegrationResult(0, 0, 0, [])
 
@@ -183,11 +187,13 @@ class InstructionIntegrator(BaseIntegrator):
             return {"files_removed": 0, "errors": 0}
         effective_root = mapping.deploy_root or target.root_dir
         prefix = (
-            f"{effective_root}/{mapping.subdir}/"
-            if mapping.subdir
-            else f"{effective_root}/"
+            f"{effective_root}/{mapping.subdir}/" if mapping.subdir else f"{effective_root}/"
         )
         legacy_dir = project_root / effective_root / mapping.subdir
+        if target.name == "cline" and target.resolved_deploy_root is not None:
+            cline_rules_dir = target.resolved_deploy_root / "Rules"
+            prefix = f"{portable_relpath(cline_rules_dir, project_root).rstrip('/')}/"
+            legacy_dir = cline_rules_dir
         if mapping.format_id == "cursor_rules":
             legacy_pattern = "*.mdc"
         elif mapping.format_id == "claude_rules":

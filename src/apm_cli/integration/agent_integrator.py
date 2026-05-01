@@ -112,6 +112,10 @@ class AgentIntegrator(BaseIntegrator):
 
         effective_root = mapping.deploy_root or target.root_dir
         target_root = project_root / effective_root
+        # Cline global/user-scope routes workflows to ~/Documents/Cline/Workflows
+        # (or ~/Cline/Workflows on Linux fallback).
+        if target.name == "cline" and target.resolved_deploy_root is not None:
+            target_root = target.resolved_deploy_root
         if not target.auto_create and not (project_root / target.root_dir).is_dir():
             return IntegrationResult(0, 0, 0, [])
 
@@ -120,7 +124,8 @@ class AgentIntegrator(BaseIntegrator):
         if not agent_files:
             return IntegrationResult(0, 0, 0, [])
 
-        agents_dir = target_root / mapping.subdir
+        agents_subdir = "Workflows" if (target.name == "cline" and target.resolved_deploy_root is not None) else mapping.subdir
+        agents_dir = target_root / agents_subdir
         agents_dir.mkdir(parents=True, exist_ok=True)
 
         files_integrated = 0
@@ -178,6 +183,10 @@ class AgentIntegrator(BaseIntegrator):
         effective_root = mapping.deploy_root or target.root_dir
         prefix = f"{effective_root}/{mapping.subdir}/"
         legacy_dir = project_root / effective_root / mapping.subdir
+        if target.name == "cline" and target.resolved_deploy_root is not None:
+            workflows_dir = target.resolved_deploy_root / "Workflows"
+            prefix = f"{portable_relpath(workflows_dir, project_root).rstrip('/')}/"
+            legacy_dir = workflows_dir
         # Copilot uses .agent.md suffix; others use plain .md
         legacy_pattern = "*-apm.agent.md" if mapping.extension == ".agent.md" else "*-apm.md"
         return self.sync_remove_files(

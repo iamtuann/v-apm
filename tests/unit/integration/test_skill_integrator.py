@@ -3701,6 +3701,13 @@ def _make_resolved_cowork_target(cowork_root: Path) -> "TargetProfile":  # noqa:
     return _dc_replace(KNOWN_TARGETS["copilot-cowork"], resolved_deploy_root=cowork_root)
 
 
+def _make_resolved_cline_target(cline_root: Path) -> "TargetProfile":  # noqa: F821
+    """Return a frozen TargetProfile with resolved_deploy_root set for cline."""
+    from apm_cli.integration.targets import TargetProfile  # noqa: F401
+
+    return _dc_replace(KNOWN_TARGETS["cline"], resolved_deploy_root=cline_root)
+
+
 def _make_package_info(install_path: Path) -> MagicMock:
     """Create a minimal PackageInfo mock for skill integration tests.
 
@@ -3876,3 +3883,57 @@ class TestPromoteSubSkillsCowork:
         assert deployed_skill.exists()
         # .apm dir is excluded via shutil.ignore_patterns('.apm')
         assert not (cowork_root / "my-skill" / ".apm").exists()
+
+
+class TestIntegrateNativeSkillClineUserScope:
+    """Tests for Cline user-scope skill routing."""
+
+    def test_deploys_to_home_dot_cline_skills(self, tmp_path: Path) -> None:
+        cline_global_root = tmp_path / "Documents" / "Cline"
+        cline_global_root.mkdir(parents=True)
+        pkg_dir = tmp_path / "src" / "my-skill"
+        pkg_dir.mkdir(parents=True)
+        (pkg_dir / "SKILL.md").write_text("# My Skill")
+
+        pkg_info = _make_package_info(pkg_dir)
+        cline_target = _make_resolved_cline_target(cline_global_root)
+
+        project_root = tmp_path / "home"
+        project_root.mkdir()
+
+        integrator = SkillIntegrator()
+        with patch.object(integrator, "_build_ownership_maps", return_value=({}, {})):
+            result = integrator._integrate_native_skill(
+                pkg_info,
+                project_root,
+                pkg_dir / "SKILL.md",
+                targets=[cline_target],
+            )
+
+        deployed_skill = project_root / ".cline" / "skills" / "my-skill" / "SKILL.md"
+        assert deployed_skill.exists()
+        assert any(".cline/skills" in str(p).replace("\\", "/") for p in result.target_paths)
+
+    def test_does_not_deploy_under_documents_cline_root(self, tmp_path: Path) -> None:
+        cline_global_root = tmp_path / "Documents" / "Cline"
+        cline_global_root.mkdir(parents=True)
+        pkg_dir = tmp_path / "src" / "my-skill"
+        pkg_dir.mkdir(parents=True)
+        (pkg_dir / "SKILL.md").write_text("# My Skill")
+
+        pkg_info = _make_package_info(pkg_dir)
+        cline_target = _make_resolved_cline_target(cline_global_root)
+
+        project_root = tmp_path / "home"
+        project_root.mkdir()
+
+        integrator = SkillIntegrator()
+        with patch.object(integrator, "_build_ownership_maps", return_value=({}, {})):
+            integrator._integrate_native_skill(
+                pkg_info,
+                project_root,
+                pkg_dir / "SKILL.md",
+                targets=[cline_target],
+            )
+
+        assert not (cline_global_root / "my-skill").exists()
