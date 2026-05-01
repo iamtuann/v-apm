@@ -759,6 +759,25 @@ Use Cline for code analysis and generation.
         assert result.files_integrated == 0
         assert result.target_paths == []
 
+    def test_cline_rules_fallback_from_generic_instructions(self):
+        """Cline can consume generic .apm/instructions/*.instructions.md rules."""
+        pkg = self.project_root / "package"
+        inst_dir = pkg / ".apm" / "instructions"
+        inst_dir.mkdir(parents=True)
+        (inst_dir / "coding.instructions.md").write_text(
+            "---\napplyTo: '**/*.py'\n---\n# Generic Instruction"
+        )
+
+        pkg_info = self._make_package_info(pkg)
+        result = self.integrator.integrate_instructions_for_target(
+            KNOWN_TARGETS["cline"], pkg_info, self.project_root
+        )
+
+        assert result.files_integrated == 1
+        target = self.project_root / ".clinerules" / "coding.md"
+        assert target.exists()
+        assert "# Generic Instruction" in target.read_text()
+
     def test_cline_rules_user_scope_deploys_to_global_rules_dir(self):
         """User-scope Cline rules deploy to <resolved>/Rules/."""
         pkg = self.project_root / "package"

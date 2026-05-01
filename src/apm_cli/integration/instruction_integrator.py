@@ -93,14 +93,16 @@ class InstructionIntegrator(BaseIntegrator):
         
         # Find instruction files based on target format
         if mapping.format_id == "cline_rules":
-            # Cline rules are .md files under .apm/cline-rules/ (recursive).
-            # Search only this subtree to avoid picking up unrelated markdown
-            # (e.g. .apm/instructions/*.md from other targets).
+            # Cline rules support both:
+            # 1) Native Cline layout: .apm/cline-rules/**/*.md
+            # 2) Generic APM instructions: .apm/instructions/*.instructions.md
             rules_root = package_info.install_path / ".apm" / "cline-rules"
             instruction_files = self.find_files_by_glob(
                 rules_root,
                 "**/*.md",
             )
+            if not instruction_files:
+                instruction_files = self.find_instruction_files(package_info.install_path)
         else:
             # Standard instruction files are .instructions.md in .apm/instructions/
             instruction_files = self.find_instruction_files(package_info.install_path)
@@ -135,9 +137,16 @@ class InstructionIntegrator(BaseIntegrator):
                     stem = stem[: -len(".instructions.md")]
                 target_name = f"{stem}{mapping.extension}"
             elif fmt == "cline_rules":
-                # For Cline, preserve directory structure relative to .apm/cline-rules/
                 rules_base = package_info.install_path / ".apm" / "cline-rules"
-                target_name = source_file.relative_to(rules_base)
+                if source_file.is_relative_to(rules_base):
+                    # Native Cline layout preserves nested structure.
+                    target_name = source_file.relative_to(rules_base)
+                else:
+                    # Generic instructions become .md rules at .clinerules root.
+                    stem = source_file.name
+                    if stem.endswith(".instructions.md"):
+                        stem = stem[: -len(".instructions.md")]
+                    target_name = f"{stem}.md"
             else:
                 target_name = source_file.name
 
