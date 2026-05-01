@@ -272,7 +272,9 @@ def get_target_description(target: UserTargetType) -> str:
 
 #: The complete set of real (non-pseudo) canonical targets.
 #: "minimal" is intentionally excluded -- it is a fallback pseudo-target.
-ALL_CANONICAL_TARGETS = frozenset({"vscode", "claude", "cursor", "opencode", "codex", "gemini"})
+ALL_CANONICAL_TARGETS = frozenset(
+    {"vscode", "claude", "cursor", "opencode", "codex", "gemini", "cline"}
+)
 
 #: Targets that the parser must accept but that are gated at runtime by
 #: ``is_enabled()`` in ``core/experimental.py`` and ``_flag_gated()`` in

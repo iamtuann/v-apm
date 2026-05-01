@@ -420,8 +420,7 @@ KNOWN_TARGETS: dict[str, TargetProfile] = {
     #             ~/.cline/skills/ (cross-platform for skills)
     # Rules: plain Markdown files in .clinerules/ root
     # Workflows: Markdown files in .clinerules/workflows/ (treated as agents)
-    # Skills: deploy to both .cline/skills/ (primary) and .clinerules/skills/ (co-located)
-    #         SkillIntegrator handles dual-root via special cline handling
+    # Skills: deploy to .cline/skills/ (Cline's native skills location)
     # Hooks: support .js, .py, .sh, .json formats with HookExecutor routing
     "cline": TargetProfile(
         name="cline",
