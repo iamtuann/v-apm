@@ -86,7 +86,30 @@ class InstructionIntegrator(BaseIntegrator):
             return IntegrationResult(0, 0, 0, [])
 
         self.init_link_resolver(package_info, project_root)
-        instruction_files = self.find_instruction_files(package_info.install_path)
+        
+        # Find instruction files based on target format
+        if mapping.format_id == "cline_rules":
+            # Cline rules are .md files under .apm/cline-rules/ (recursive).
+            # Search only this subtree to avoid picking up unrelated markdown
+            # (e.g. .apm/instructions/*.md from other targets).
+            rules_root = package_info.install_path / ".apm" / "cline-rules"
+            instruction_files = self.find_files_by_glob(
+                rules_root,
+                "**/*.md",
+            )
+        else:
+            # Standard instruction files are .instructions.md in .apm/instructions/
+            instruction_files = self.find_instruction_files(package_info.install_path)
+            # Copilot-compatible fallback: accept plain markdown files when a
+            # package provides .apm/instructions/*.md without the
+            # ".instructions.md" suffix.
+            if not instruction_files and target.name == "copilot":
+                instruction_files = self.find_files_by_glob(
+                    package_info.install_path,
+                    "*.md",
+                    subdirs=[".apm/instructions"],
+                )
+        
         if not instruction_files:
             return IntegrationResult(0, 0, 0, [])
 
@@ -107,10 +130,15 @@ class InstructionIntegrator(BaseIntegrator):
                 if stem.endswith(".instructions.md"):
                     stem = stem[: -len(".instructions.md")]
                 target_name = f"{stem}{mapping.extension}"
+            elif fmt == "cline_rules":
+                # For Cline, preserve directory structure relative to .apm/cline-rules/
+                rules_base = package_info.install_path / ".apm" / "cline-rules"
+                target_name = source_file.relative_to(rules_base)
             else:
                 target_name = source_file.name
 
             target_path = deploy_dir / target_name
+            target_path.parent.mkdir(parents=True, exist_ok=True)
             rel_path = portable_relpath(target_path, project_root)
 
             if self.check_collision(
@@ -154,7 +182,11 @@ class InstructionIntegrator(BaseIntegrator):
         if not mapping:
             return {"files_removed": 0, "errors": 0}
         effective_root = mapping.deploy_root or target.root_dir
-        prefix = f"{effective_root}/{mapping.subdir}/"
+        prefix = (
+            f"{effective_root}/{mapping.subdir}/"
+            if mapping.subdir
+            else f"{effective_root}/"
+        )
         legacy_dir = project_root / effective_root / mapping.subdir
         if mapping.format_id == "cursor_rules":
             legacy_pattern = "*.mdc"
@@ -162,6 +194,8 @@ class InstructionIntegrator(BaseIntegrator):
             # Do not use a broad legacy glob for Claude rules to avoid
             # deleting user-authored .md files under .claude/rules/.
             legacy_pattern = None
+        elif mapping.format_id == "cline_rules":
+            legacy_pattern = "*.md"
         else:
             legacy_pattern = "*.instructions.md"
         return self.sync_remove_files(

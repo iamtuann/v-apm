@@ -224,3 +224,72 @@ class TestActiveTargets:
     def test_explicit_list_codex_at_project_scope(self):
         targets = active_targets(self.root, explicit_target=["codex"])
         assert [t.name for t in targets] == ["codex"]
+
+    # -- cline detection --
+
+    def test_only_clinerules_returns_cline(self):
+        """Cline uses .clinerules/ as root directory."""
+        (self.root / ".clinerules").mkdir()
+        targets = active_targets(self.root)
+        assert [t.name for t in targets] == ["cline"]
+
+    def test_explicit_cline(self):
+        targets = active_targets(self.root, explicit_target="cline")
+        assert [t.name for t in targets] == ["cline"]
+
+    def test_cline_and_claude_returns_both(self):
+        (self.root / ".clinerules").mkdir()
+        (self.root / ".claude").mkdir()
+        targets = active_targets(self.root)
+        names = {t.name for t in targets}
+        assert names == {"cline", "claude"}
+
+    def test_cline_with_all_agents_returns_all(self):
+        """Cline detected alongside all other auto-detectable agents."""
+        for d in (".github", ".claude", ".cursor", ".opencode", ".codex", ".gemini", ".clinerules"):
+            (self.root / d).mkdir()
+        targets = active_targets(self.root)
+        assert len(targets) == 7  # All 7 auto-detectable project-scope targets including Cline
+
+    def test_cline_not_detected_when_only_cline_dir_exists(self):
+        """Only .cline/ (without .clinerules/) should NOT detect Cline."""
+        (self.root / ".cline").mkdir()
+        targets = active_targets(self.root)
+        # .cline/ alone is skills dir, not root; should fallback to copilot
+        assert [t.name for t in targets] == ["copilot"]
+
+    def test_cline_clinerules_root_only(self):
+        """Verify .clinerules is the root_dir for Cline."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        cline_profile = KNOWN_TARGETS.get("cline")
+        assert cline_profile is not None
+        assert cline_profile.root_dir == ".clinerules"
+
+    def test_cline_target_profile_has_four_primitives(self):
+        """Cline should support instructions, skills, agents, hooks."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        cline_profile = KNOWN_TARGETS.get("cline")
+        assert cline_profile is not None
+        assert "instructions" in cline_profile.primitives
+        assert "skills" in cline_profile.primitives
+        assert "agents" in cline_profile.primitives
+        assert "hooks" in cline_profile.primitives
+
+    def test_cline_instructions_no_subdir(self):
+        """Cline rules deploy to .clinerules/ (no subdir)."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        cline_profile = KNOWN_TARGETS.get("cline")
+        instructions = cline_profile.primitives.get("instructions")
+        assert instructions is not None
+        assert instructions.subdir == ""
+        assert instructions.extension == ".md"
+        assert instructions.format_id == "cline_rules"
+
+    def test_cline_skills_subdir(self):
+        """Cline skills in .cline/skills/."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        cline_profile = KNOWN_TARGETS.get("cline")
+        skills = cline_profile.primitives.get("skills")
+        assert skills is not None
+        assert skills.subdir == "skills"
+        assert "SKILL.md" in skills.extension
