@@ -123,6 +123,14 @@ class TargetProfile:
     in ``KNOWN_TARGETS`` for tooling introspection.
     """
 
+    generated_files: tuple[str, ...] = ()
+    """Additional generated files associated with this target.
+
+    These are compile-time outputs that live at the target root but are not
+    deployed via primitive integrators, e.g. Copilot's root
+    ``copilot-instructions.md`` file.
+    """
+
     @property
     def prefix(self) -> str:
         """Return the path prefix for this target (e.g. ``".github/"``).
@@ -235,6 +243,17 @@ class TargetProfile:
                     # Keep ``root_dir`` home-relative so cleanup prefix matching holds.
                     new_root = abs_path.relative_to(home).as_posix()
                 except ValueError:
+                    # Fallback: when CLAUDE_CONFIG_DIR points outside $HOME we
+                    # store an absolute path. ``pathlib.Path / <absolute>`` is
+                    # ``<absolute>`` so deploy + cleanup write to the right
+                    # place. Caveat: the lockfile path translator
+                    # (``install/services._deployed_path_entry``) calls
+                    # ``relative_to(project_root)`` and raises ``RuntimeError``
+                    # for out-of-tree paths that are not dynamic-root targets.
+                    # Today this is unreachable because user-scope CLAUDE
+                    # installs do not flow through that translator, but any
+                    # future refactor that lockfiles user-scope deploys must
+                    # treat absolute ``root_dir`` as a dynamic-root case.
                     new_root = str(abs_path)
 
         if self.unsupported_user_primitives:
@@ -274,6 +293,7 @@ KNOWN_TARGETS: dict[str, TargetProfile] = {
         user_supported="partial",
         user_root_dir=".copilot",
         unsupported_user_primitives=("prompts", "instructions"),
+        generated_files=("copilot-instructions.md",),
     ),
     # Claude Code -- the user-level config directory is whatever
     # ``CLAUDE_CONFIG_DIR`` points to (default ``~/.claude``).  The env

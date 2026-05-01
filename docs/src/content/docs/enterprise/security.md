@@ -121,7 +121,7 @@ download → scan source → block or deploy → report
 
 Content scanning extends beyond install:
 
-- **`apm compile`** scans compiled output (AGENTS.md, CLAUDE.md, commands) before writing to disk. Critical findings cause `apm compile` to exit with code 1 after writing — defense-in-depth since source files were already scanned at install, but compilation assembles content from multiple sources.
+- **`apm compile`** scans compiled output (AGENTS.md, CLAUDE.md, `.github/copilot-instructions.md`, commands) before writing to disk. Critical findings cause `apm compile` to exit with code 1 after writing — defense-in-depth since source files were already scanned at install, but compilation assembles content from multiple sources. `.github/copilot-instructions.md` is assembled from global instructions in `.apm/instructions/`, including those installed under `apm_modules/`.
 - **`apm pack`** scans files before bundling. This catches hidden characters before a package is published, preventing authors from accidentally distributing tainted content.
 - **`apm unpack`** scans bundle contents before deployment. This is a pre-deployment gate matching `apm install` — critical findings block deployment unless `--force` is used.
 
@@ -223,7 +223,7 @@ When APM deploys a file, it checks whether a file already exists at the target p
 APM separates production and development dependencies:
 
 - **Production dependencies** (`dependencies.apm`) are included in plugin bundles and shared packages.
-- **Development dependencies** (`devDependencies.apm`, installed via `apm install --dev`) are resolved and cached locally but **excluded** from `apm pack --format plugin` output.
+- **Development dependencies** (`devDependencies.apm`, installed via `apm install --dev`) are resolved and cached locally but **excluded** from `apm pack` output (both plugin format -- the default -- and `--format apm`).
 
 This prevents transitive inclusion of development-only packages (test fixtures, linting rules, internal helpers) in distributed artifacts. The lockfile marks dev dependencies with `is_dev: true` for explicit tracking. See the [Lock File Specification](../../reference/lockfile-spec/#42-dependency-entries) for field details.
 

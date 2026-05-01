@@ -293,3 +293,7 @@ class TestActiveTargets:
         assert skills is not None
         assert skills.subdir == "skills"
         assert "SKILL.md" in skills.extension
+
+    def test_copilot_profile_lists_root_generated_file(self):
+        profile = KNOWN_TARGETS["copilot"]
+        assert "copilot-instructions.md" in profile.generated_files
