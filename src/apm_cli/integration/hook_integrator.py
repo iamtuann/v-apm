@@ -47,6 +47,8 @@ import json
 import logging
 import re
 import shutil
+import os
+import sys
 from dataclasses import dataclass, field  # noqa: F401
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple  # noqa: F401, UP035
@@ -264,9 +266,10 @@ class HookIntegrator(BaseIntegrator):
 
         File types discovered:
         - *.json: Traditional APM/Claude/Copilot hooks (merged into agent config)
-        - *.js: JavaScript hooks (Cline, executed via Node.js)
-        - *.py: Python hooks (Cline, executed via Python)
-        - *.sh: Shell hooks (Cline, executed via Bash)
+        - *.js: JavaScript hooks (Cline, executed via Node.js) - need check
+        - *.py: Python hooks (Cline, executed via Python) - need check
+        - *.sh: Shell hooks (Cline, executed via Bash) - need check
+        - *.ps1: PowerShell hooks (Cline, executed via PowerShell)
 
         Args:
             package_path: Path to the package directory
@@ -278,7 +281,7 @@ class HookIntegrator(BaseIntegrator):
         seen = set()
         
         # File patterns to search for (all hook types)
-        patterns = ("*.json", "*.js", "*.py", "*.sh")
+        patterns = ("*.json", "*.sh", "*.ps1")
 
         # Search in .apm/hooks/ (APM convention)
         apm_hooks = package_path / ".apm" / "hooks"
@@ -915,12 +918,31 @@ class HookIntegrator(BaseIntegrator):
         for hook_file in hook_files:
             # Only copy non-JSON hooks; JSON hooks would be merged in other targets
             if hook_file.suffix == ".json":
-                # JSON hooks for Cline aren't typically used (use .js, .py, .sh instead)
+                # JSON hooks for Cline aren't typically used (use .js, .py, .sh, .ps1 instead)
                 # Skip them for now; could be added if needed
                 continue
 
-            # Copy hook file to .clinerules/hooks/<package>-<name>.<ext>
-            target_name = f"{package_name}-{hook_file.name}"
+            # Determine target filename based on OS and Cline conventions
+            base_name = hook_file.stem
+            target_ext = ""
+            if sys.platform == "win32":  # Windows
+                target_ext = ".ps1"
+                # If source is already .ps1, use its original name
+                if hook_file.suffix.lower() == ".ps1":
+                    base_name = hook_file.name.removesuffix(hook_file.suffix)
+                    target_ext = hook_file.suffix
+            elif sys.platform in ("darwin", "linux"):  # macOS/Linux
+                # On Unix-like systems, Cline expects extensionless executable files
+                target_ext = ""  # Force extensionless
+                # If it's a script, ensure it's copied as extensionless
+                if hook_file.suffix in (".js", ".py", ".sh"):
+                    base_name = hook_file.stem
+                else:
+                    # For other files (e.g., binaries), keep original name if no known script suffix
+                    base_name = hook_file.name
+                    target_ext = "" # Ensure it's extensionless, even if original had one
+
+            target_name = f"{base_name}{target_ext}"
             target_path = target_dir / target_name
 
             if self.check_collision(
