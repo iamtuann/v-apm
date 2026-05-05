@@ -24,18 +24,20 @@ class AgentIntegrator(BaseIntegrator):
     """Handles integration of APM package agents into .github/agents/, .claude/agents/, and .cursor/agents/."""
 
     def find_agent_files(self, package_path: Path) -> list[Path]:
-        """Find all .agent.md and .chatmode.md files in a package.
+        """Find all .agent.md, .chatmode.md, and workflow files in a package.
 
         Searches in:
         - Package root directory (.agent.md and .chatmode.md)
         - .apm/agents/ subdirectory (new standard)
         - .apm/chatmodes/ subdirectory (legacy)
+        - .apm/workflows/ subdirectory (for Cline workflows)
+        - workflows/ subdirectory (for Cline workflows, no .apm prefix)
 
         Args:
             package_path: Path to the package directory
 
         Returns:
-            List[Path]: List of absolute paths to agent files
+            List[Path]: List of absolute paths to agent/workflow files
         """
         agent_files = []
 
@@ -60,6 +62,20 @@ class AgentIntegrator(BaseIntegrator):
         apm_chatmodes = package_path / ".apm" / "chatmodes"
         if apm_chatmodes.exists():
             agent_files.extend(apm_chatmodes.glob("*.chatmode.md"))
+
+        # Search in .apm/workflows/ (for Cline workflows)
+        apm_workflows = package_path / ".apm" / "workflows"
+        if apm_workflows.exists():
+            for md_file in apm_workflows.rglob("*.md"):
+                if md_file not in agent_files:
+                    agent_files.append(md_file)
+
+        # Search in workflows/ (for Cline workflows, no .apm prefix)
+        workflows_dir = package_path / "workflows"
+        if workflows_dir.exists():
+            for md_file in workflows_dir.rglob("*.md"):
+                if md_file not in agent_files:
+                    agent_files.append(md_file)
 
         return agent_files
 
@@ -125,6 +141,25 @@ class AgentIntegrator(BaseIntegrator):
         agent_files = self.find_agent_files(package_info.install_path)
         if not agent_files:
             return IntegrationResult(0, 0, 0, [])
+
+        # For Cline, only deploy workflow files, not agent files
+        # Agent files (.apm/agents/, *.agent.md) should not become Cline workflows
+        if target.name == "cline":
+            agent_files = [
+                f for f in agent_files
+                if not (
+                    # Skip files from .apm/agents/
+                    ".apm/agents" in str(f) or ".apm\\agents" in str(f)
+                    # Skip .agent.md files
+                    or f.name.endswith(".agent.md")
+                    # Skip .chatmode.md files (legacy agents)
+                    or f.name.endswith(".chatmode.md")
+                    # Skip files from .apm/chatmodes/
+                    or ".apm/chatmodes" in str(f) or ".apm\\chatmodes" in str(f)
+                )
+            ]
+            if not agent_files:
+                return IntegrationResult(0, 0, 0, [])
 
         agents_subdir = "Workflows" if (target.name == "cline" and target.resolved_deploy_root is not None) else mapping.subdir
         agents_dir = target_root / agents_subdir
