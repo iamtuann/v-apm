@@ -46,15 +46,15 @@ def _deployed_path_entry(
     """Return the lockfile-safe path string for a deployed file.
 
     For standard targets the entry is ``project_root``-relative.  For
-    cowork (dynamic-root) targets the entry uses the synthetic
-    ``cowork://`` URI scheme so the lockfile pipeline does not attempt
-    a ``Path.relative_to(project_root)`` that would crash.
+    dynamic-root targets (cowork, cline at user scope) the entry uses:
+    - cowork: synthetic ``cowork://`` URI scheme
+    - cline: path relative to home directory (e.g., ``~/Documents/Cline/Rules/file.md``)
 
     Raises
     ------
     RuntimeError
         If the path is outside the project tree and cannot be
-        translated to a ``cowork://`` URI via any available target.
+        translated via any available target.
     """
     try:
         return target_path.relative_to(project_root).as_posix()
@@ -64,9 +64,25 @@ def _deployed_path_entry(
         if targets:
             for _t in targets:
                 if _t.resolved_deploy_root is not None:
-                    from apm_cli.integration.copilot_cowork_paths import to_lockfile_path
+                    # Cowork uses the cowork:// URI scheme
+                    if _t.name == "copilot-cowork":
+                        from apm_cli.integration.copilot_cowork_paths import to_lockfile_path
 
-                    return to_lockfile_path(target_path, _t.resolved_deploy_root)
+                        return to_lockfile_path(target_path, _t.resolved_deploy_root)
+                    # Cline at user scope: use path relative to home
+                    # (e.g., ~/Documents/Cline/Rules/file.md)
+                    if _t.name == "cline":
+                        home = Path.home()
+                        try:
+                            rel = target_path.relative_to(home)
+                            return f"~/{rel.as_posix()}"
+                        except ValueError:
+                            pass
+                    # Fallback for other dynamic-root targets
+                    else:
+                        from apm_cli.integration.copilot_cowork_paths import to_lockfile_path
+
+                        return to_lockfile_path(target_path, _t.resolved_deploy_root)
         raise RuntimeError(  # noqa: B904
             f"Cannot translate {target_path!r} to a lockfile path: "
             f"path is outside the project tree and no dynamic-root "
@@ -239,12 +255,52 @@ def integrate_package_primitives(
                 continue
             _agg_files += _int_result.files_integrated
             result[_entry.counter_key] += _int_result.files_integrated
-            _effective_root = _mapping.deploy_root or _target.root_dir
-            _deploy_dir = (
-                f"{_effective_root}/{_mapping.subdir}/"
-                if _mapping.subdir
-                else f"{_effective_root}/"
-            )
+            # Compute display path for the deployed files
+            # For targets with resolved_deploy_root (e.g., Cline at user scope),
+            # show the actual deployed path, not the project-scope path
+            if _target.resolved_deploy_root is not None:
+                # Cline at user scope uses hardcoded subdirs:
+                # - instructions -> Rules
+                # - agents -> Workflows
+                # - hooks -> Hooks
+                if _target.name == "cline":
+                    _rel_path = _target.resolved_deploy_root.relative_to(Path.home())
+                    if _prim_name == "instructions":
+                        _deploy_dir = f"~/{_rel_path}/Rules/"
+                    elif _prim_name == "agents":
+                        _deploy_dir = f"~/{_rel_path}/Workflows/"
+                    elif _prim_name == "hooks":
+                        _deploy_dir = f"~/{_rel_path}/Hooks/"
+                    elif _mapping.deploy_root:
+                        _deploy_dir = f"{_mapping.deploy_root}/{_mapping.subdir}/" if _mapping.subdir else f"{_mapping.deploy_root}/"
+                    else:
+                        _deploy_dir = f"~/{_rel_path}/{_mapping.subdir}/" if _mapping.subdir else f"~/{_rel_path}/"
+                elif not _mapping.deploy_root:
+                    _rel_path = _target.resolved_deploy_root.relative_to(Path.home())
+                    _deploy_dir = f"~/{_rel_path}/"
+                    if _mapping.subdir:
+                        _deploy_dir = f"~/{_rel_path}/{_mapping.subdir}/"
+                else:
+                    _effective_root = _mapping.deploy_root
+                    _deploy_dir = (
+                        f"{_effective_root}/{_mapping.subdir}/"
+                        if _mapping.subdir
+                        else f"{_effective_root}/"
+                    )
+            elif _mapping.deploy_root:
+                _effective_root = _mapping.deploy_root
+                _deploy_dir = (
+                    f"{_effective_root}/{_mapping.subdir}/"
+                    if _mapping.subdir
+                    else f"{_effective_root}/"
+                )
+            else:
+                _effective_root = _target.root_dir
+                _deploy_dir = (
+                    f"{_effective_root}/{_mapping.subdir}/"
+                    if _mapping.subdir
+                    else f"{_effective_root}/"
+                )
             if _prim_name == "instructions" and _mapping.format_id in (
                 "cursor_rules",
                 "claude_rules",

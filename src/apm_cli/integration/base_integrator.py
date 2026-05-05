@@ -133,7 +133,7 @@ class BaseIntegrator:
         1. No path-traversal components (``..``)
         2. Starts with an allowed integration prefix
         3. Resolves within *project_root* (or within the cowork root
-           for ``cowork://`` paths)
+           for ``cowork://`` paths, or within home for dynamic-root targets)
         """
         from apm_cli.integration.copilot_cowork_paths import COWORK_URI_SCHEME
 
@@ -161,6 +161,76 @@ class BaseIntegrator:
                 return True
             except Exception:
                 return False
+
+        # --- ~/ paths: Cline at user scope ---
+        # Paths like ~/Documents/Cline/Rules/file.md are stored in the lockfile
+        # for Cline global installations. Validate that they resolve within home.
+        if rel_path.startswith("~/"):
+            # Check if any target has resolved_deploy_root (indicates user scope)
+            # and the path starts with a valid prefix under home
+            if targets:
+                for t in targets:
+                    if t.resolved_deploy_root is not None:
+                        # Construct the expected prefix for this target
+                        for prim_name, mapping in t.primitives.items():
+                            if mapping.deploy_root:
+                                continue  # Skip primitives with deploy_root (e.g., skills)
+                            effective_root = t.resolved_deploy_root.relative_to(Path.home())
+                            prefix = f"~/{effective_root}/"
+                            if mapping.subdir:
+                                prefix = f"~/{effective_root}/{mapping.subdir}/"
+                            if rel_path.startswith(prefix):
+                                return True
+            return False
+
+        # --- Paths relative to home (no ~/ prefix) for dynamic-root targets ---
+        # For Cline at user scope, paths may be stored as "Documents/Cline/Rules/file.md"
+        # (relative to home, without ~/ prefix). Also handles paths with deploy_root
+        # like ".cline/skills/...".
+        if targets:
+            for t in targets:
+                if t.resolved_deploy_root is not None:
+                    # Check paths under resolved_deploy_root (e.g., Documents/Cline/)
+                    for prim_name, mapping in t.primitives.items():
+                        # Cline uses hardcoded subdirs at user scope, regardless of deploy_root:
+                        # - instructions -> Rules
+                        # - agents -> Workflows
+                        # - hooks -> Hooks
+                        # Skills use deploy_root=".cline"
+                        if t.name == "cline":
+                            effective_root = t.resolved_deploy_root.relative_to(Path.home())
+                            if prim_name == "instructions":
+                                prefix = f"{effective_root}/Rules/"
+                                if rel_path.startswith(prefix):
+                                    return True
+                            elif prim_name == "agents":
+                                prefix = f"{effective_root}/Workflows/"
+                                if rel_path.startswith(prefix):
+                                    return True
+                            elif prim_name == "hooks":
+                                prefix = f"{effective_root}/Hooks/"
+                                if rel_path.startswith(prefix):
+                                    return True
+                            elif prim_name == "skills":
+                                # Skills use deploy_root=".cline"
+                                prefix = f"{mapping.deploy_root}/"
+                                if mapping.subdir:
+                                    prefix = f"{mapping.deploy_root}/{mapping.subdir}/"
+                                if rel_path.startswith(prefix):
+                                    return True
+                        elif mapping.deploy_root:
+                            # Primitives with deploy_root (e.g., .cline/skills/)
+                            prefix = f"{mapping.deploy_root}/"
+                            if mapping.subdir:
+                                prefix = f"{mapping.deploy_root}/{mapping.subdir}/"
+                            if rel_path.startswith(prefix):
+                                return True
+                        else:
+                            # Primitives under resolved_deploy_root
+                            effective_root = t.resolved_deploy_root.relative_to(Path.home())
+                            prefix = f"{effective_root}/{mapping.subdir}/" if mapping.subdir else f"{effective_root}/"
+                            if rel_path.startswith(prefix):
+                                return True
 
         if not rel_path.startswith(allowed_prefixes):
             return False
@@ -234,11 +304,46 @@ class BaseIntegrator:
         for target in source:
             for prim_name, mapping in target.primitives.items():
                 # Dynamic-root targets (cowork) use cowork:// URI prefix.
+                # Cline at user scope uses paths relative to home (e.g., Documents/Cline/)
                 if target.resolved_deploy_root is not None:
                     if prim_name == "skills":
-                        from apm_cli.integration.copilot_cowork_paths import COWORK_LOCKFILE_PREFIX
+                        if target.name == "copilot-cowork":
+                            from apm_cli.integration.copilot_cowork_paths import COWORK_LOCKFILE_PREFIX
 
-                        skill_prefixes.append(COWORK_LOCKFILE_PREFIX)
+                            skill_prefixes.append(COWORK_LOCKFILE_PREFIX)
+                        else: 
+                            # Cline skills use deploy_root=".cline"
+                            effective_root = mapping.deploy_root or target.root_dir
+                            prefix = f"{effective_root}/{mapping.subdir}/" if mapping.subdir else f"{effective_root}/"
+                            skill_prefixes.append(prefix)
+                    elif prim_name == "hooks":
+                        # Cline hooks at user scope use "Hooks" (capital H)
+                        effective_root = target.resolved_deploy_root.relative_to(Path.home())
+                        if target.name == "cline":
+                            prefix = f"{effective_root}/Hooks/"
+                        else:
+                            prefix = f"{effective_root}/{mapping.subdir}/" if mapping.subdir else f"{effective_root}/"
+                        hook_prefixes.append(prefix)
+                    else:
+                        # Other primitives (instructions, agents) for Cline at user scope
+                        effective_root = target.resolved_deploy_root.relative_to(Path.home())
+                        # Cline uses hardcoded subdirs at user scope:
+                        # - instructions -> Rules
+                        # - agents -> Workflows
+                        if target.name == "cline":
+                            if prim_name == "instructions":
+                                prefix = f"{effective_root}/Rules/"
+                            elif prim_name == "agents":
+                                prefix = f"{effective_root}/Workflows/"
+                            else:
+                                prefix = f"{effective_root}/{mapping.subdir}/" if mapping.subdir else f"{effective_root}/"
+                        else:
+                            prefix = f"{effective_root}/{mapping.subdir}/" if mapping.subdir else f"{effective_root}/"
+                        raw_key = f"{prim_name}_{target.name}"
+                        bucket_key = BaseIntegrator._BUCKET_ALIASES.get(raw_key, raw_key)
+                        if bucket_key not in buckets:
+                            buckets[bucket_key] = set()
+                        prefix_map[prefix] = bucket_key
                     continue
                 effective_root = mapping.deploy_root or target.root_dir
                 prefix = (
@@ -282,6 +387,30 @@ class BaseIntegrator:
             node["_bucket"] = bucket_key
 
         for p in managed_files:
+            # Handle ~/ paths for Cline at user scope
+            if p.startswith("~/"):
+                # Find the matching bucket for ~/ paths
+                if targets:
+                    for t in targets:
+                        if t.resolved_deploy_root is not None:
+                            for prim_name, mapping in t.primitives.items():
+                                if mapping.deploy_root:
+                                    continue  # Skip primitives with deploy_root (e.g., skills)
+                                effective_root = t.resolved_deploy_root.relative_to(Path.home())
+                                prefix = f"~/{effective_root}/"
+                                if mapping.subdir:
+                                    prefix = f"~/{effective_root}/{mapping.subdir}/"
+                                if p.startswith(prefix):
+                                    raw_key = f"{prim_name}_{t.name}"
+                                    bucket_key = BaseIntegrator._BUCKET_ALIASES.get(raw_key, raw_key)
+                                    if bucket_key not in buckets:
+                                        buckets[bucket_key] = set()
+                                    buckets[bucket_key].add(p)
+                                    break
+                            else:
+                                continue
+                            break
+                continue
             # Walk the trie; keep the deepest bucket match (longest prefix).
             segments = [s for s in p.split("/") if s]
             node = trie
@@ -302,6 +431,48 @@ class BaseIntegrator:
                 buckets["skills"].add(p)
             elif p.startswith(hook_tuple):
                 buckets["hooks"].add(p)
+            else:
+                # Handle home-relative paths for dynamic-root targets (e.g., Documents/Cline/)
+                # that weren't caught by the trie walk. This happens when the path prefix
+                # was added for a target with resolved_deploy_root.
+                if targets:
+                    for t in targets:
+                        if t.resolved_deploy_root is not None:
+                            effective_root = t.resolved_deploy_root.relative_to(Path.home())
+                            if p.startswith(f"{effective_root}/"):
+                                # Find the matching primitive for this path
+                                for prim_name, mapping in t.primitives.items():
+                                    # For Cline at user scope, agents and hooks have deploy_root
+                                    # set to .clinerules but are deployed to Documents/Cline/
+                                    # Check the Cline hardcoded subdirs first
+                                    if t.name == "cline":
+                                        if prim_name == "instructions":
+                                            prefix = f"{effective_root}/Rules/"
+                                        elif prim_name == "agents":
+                                            prefix = f"{effective_root}/Workflows/"
+                                        elif prim_name == "hooks":
+                                            prefix = f"{effective_root}/Hooks/"
+                                        else:
+                                            continue  # Skip other primitives
+                                        if p.startswith(prefix):
+                                            raw_key = f"{prim_name}_{t.name}"
+                                            bucket_key = BaseIntegrator._BUCKET_ALIASES.get(raw_key, raw_key)
+                                            if bucket_key not in buckets:
+                                                buckets[bucket_key] = set()
+                                            buckets[bucket_key].add(p)
+                                            break
+                                    elif mapping.deploy_root:
+                                        continue  # Skip primitives with deploy_root for other targets
+                                    else:
+                                        prefix = f"{effective_root}/{mapping.subdir}/" if mapping.subdir else f"{effective_root}/"
+                                        if p.startswith(prefix):
+                                            raw_key = f"{prim_name}_{t.name}"
+                                            bucket_key = BaseIntegrator._BUCKET_ALIASES.get(raw_key, raw_key)
+                                            if bucket_key not in buckets:
+                                                buckets[bucket_key] = set()
+                                            buckets[bucket_key].add(p)
+                                            break
+                                break
 
         return buckets
 
@@ -449,8 +620,38 @@ class BaseIntegrator:
                         target = from_lockfile_path(rel_path, _cowork_root_cached)
                     except Exception:  # noqa: S112
                         continue
+                elif rel_path.startswith("~/"):
+                    # Cline at user scope: paths are stored as ~/Documents/Cline/...
+                    # Resolve relative to home directory
+                    target = Path.home() / rel_path[2:]
                 else:
-                    target = project_root / rel_path
+                    # Check if this is a home-relative path for a dynamic-root target
+                    # (e.g., "Documents/Cline/Rules/file.md" for Cline at user scope)
+                    # Also handle paths with deploy_root (e.g., ".cline/skills/...")
+                    _is_home_relative = False
+                    if targets:
+                        for t in targets:
+                            if t.resolved_deploy_root is not None:
+                                # Check paths under resolved_deploy_root (e.g., Documents/Cline/)
+                                effective_root = t.resolved_deploy_root.relative_to(Path.home())
+                                if rel_path.startswith(f"{effective_root}/"):
+                                    target = Path.home() / rel_path
+                                    _is_home_relative = True
+                                    break
+                                # Also check paths with deploy_root (e.g., .cline/skills/)
+                                for prim_name, mapping in t.primitives.items():
+                                    if mapping.deploy_root:
+                                        prefix = f"{mapping.deploy_root}/"
+                                        if mapping.subdir:
+                                            prefix = f"{mapping.deploy_root}/{mapping.subdir}/"
+                                        if rel_path.startswith(prefix):
+                                            target = Path.home() / rel_path
+                                            _is_home_relative = True
+                                            break
+                                if _is_home_relative:
+                                    break
+                    if not _is_home_relative:
+                        target = project_root / rel_path
                 if target.exists():
                     try:
                         target.unlink()

@@ -303,10 +303,21 @@ def _sync_integrations_after_uninstall(
             _entry = _dispatch.get(_prim_name)
             if not _entry or _entry.sync_method != "sync_for_target":
                 continue
-            _effective_root = _mapping.deploy_root or _target.root_dir
-            _deploy_dir = project_root / _effective_root / _mapping.subdir
-            if not _deploy_dir.exists():
-                continue
+            # Compute the deploy directory for existence check.
+            # For targets with resolved_deploy_root (e.g., Cline at user scope),
+            # the sync_for_target method handles path resolution internally.
+            # We skip the existence check and let the integrator handle it.
+            # Note: Cline agents/hooks have deploy_root=".clinerules" but files
+            # are actually deployed to resolved_deploy_root (e.g., ~/Documents/Cline/Workflows/).
+            if _target.resolved_deploy_root is not None:
+                # Dynamic-root target (e.g., Cline global) - let sync_for_target handle it
+                pass
+            else:
+                # Standard path computation
+                _effective_root = _mapping.deploy_root or _target.root_dir
+                _deploy_dir = project_root / _effective_root / _mapping.subdir
+                if not _deploy_dir.exists():
+                    continue
             _managed_subset = None
             if _buckets is not None:
                 _bucket_key = BaseIntegrator.partition_bucket_key(_prim_name, _target.name)
@@ -374,6 +385,7 @@ def _sync_integrations_after_uninstall(
         apm_package,
         project_root,
         managed_files=_buckets["hooks"] if _buckets else None,
+        targets=_resolved_targets,
     )
     counts["hooks"] = result.get("files_removed", 0)
 

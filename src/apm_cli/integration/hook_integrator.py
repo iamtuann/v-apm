@@ -301,6 +301,15 @@ class HookIntegrator(BaseIntegrator):
                     if resolved not in seen:
                         seen.add(resolved)
                         hook_files.append(f)
+            # Also find extensionless files (for Cline on Linux/macOS)
+            for f in sorted(apm_hooks.iterdir()):
+                if f.is_symlink() or f.is_dir():
+                    continue
+                if f.suffix == "":  # Extensionless file
+                    resolved = f.resolve()
+                    if resolved not in seen:
+                        seen.add(resolved)
+                        hook_files.append(f)
 
         # Search in hooks/ (Claude-native convention)
         hooks_dir = package_path / "hooks"
@@ -309,6 +318,15 @@ class HookIntegrator(BaseIntegrator):
                 for f in sorted(hooks_dir.glob(pattern)):
                     if f.is_symlink():
                         continue
+                    resolved = f.resolve()
+                    if resolved not in seen:
+                        seen.add(resolved)
+                        hook_files.append(f)
+            # Also find extensionless files (for Cline on Linux/macOS)
+            for f in sorted(hooks_dir.iterdir()):
+                if f.is_symlink() or f.is_dir():
+                    continue
+                if f.suffix == "":  # Extensionless file
                     resolved = f.resolve()
                     if resolved not in seen:
                         seen.add(resolved)
@@ -945,12 +963,16 @@ class HookIntegrator(BaseIntegrator):
                     target_ext = hook_file.suffix
             elif sys.platform in ("darwin", "linux"):  # macOS/Linux
                 # On Unix-like systems, Cline expects extensionless executable files
+                # Skip .ps1 files (Windows PowerShell only)
+                if hook_file.suffix.lower() == ".ps1":
+                    continue  # Skip Windows-only hooks on Linux/macOS
+                
                 target_ext = ""  # Force extensionless
                 # If it's a script, ensure it's copied as extensionless
                 if hook_file.suffix in (".js", ".py", ".sh"):
                     base_name = hook_file.stem
                 else:
-                    # For other files (e.g., binaries), keep original name if no known script suffix
+                    # For other files (e.g., binaries or extensionless), keep original name
                     base_name = hook_file.name
                     target_ext = "" # Ensure it's extensionless, even if original had one
 
@@ -1074,7 +1096,19 @@ class HookIntegrator(BaseIntegrator):
                     continue
                 if ".." in rel_path:
                     continue
-                target_file = project_root / rel_path
+                # Handle home-relative paths for Cline at user scope
+                # (e.g., Documents/Cline/Hooks/PreToolUse.ps1)
+                _is_home_relative = False
+                if targets:
+                    for t in targets:
+                        if t.name == "cline" and t.resolved_deploy_root is not None:
+                            effective_root = t.resolved_deploy_root.relative_to(Path.home())
+                            if normalized.startswith(f"{effective_root}/"):
+                                target_file = Path.home() / normalized
+                                _is_home_relative = True
+                                break
+                if not _is_home_relative:
+                    target_file = project_root / rel_path
                 if target_file.exists() and target_file.is_file():
                     try:
                         target_file.unlink()

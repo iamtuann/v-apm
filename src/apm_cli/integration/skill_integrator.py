@@ -1313,10 +1313,15 @@ class SkillIntegrator(BaseIntegrator):
                 continue
             # Dynamic-root targets (cowork) use cowork:// URI prefix.
             if t.user_root_resolver is not None:
-                from apm_cli.integration.copilot_cowork_paths import COWORK_LOCKFILE_PREFIX
+                if t.name =="copilot-cowork":
+                    from apm_cli.integration.copilot_cowork_paths import COWORK_LOCKFILE_PREFIX
 
-                if COWORK_LOCKFILE_PREFIX not in skill_prefixes:
-                    skill_prefixes.append(COWORK_LOCKFILE_PREFIX)
+                    if COWORK_LOCKFILE_PREFIX not in skill_prefixes:
+                        skill_prefixes.append(COWORK_LOCKFILE_PREFIX)
+                else:
+                    sm = t.primitives["skills"]
+                    effective_root = sm.deploy_root or t.root_dir
+                    skill_prefixes.append(f"{effective_root}/skills/")
                 continue
             sm = t.primitives["skills"]
             effective_root = sm.deploy_root or t.root_dir

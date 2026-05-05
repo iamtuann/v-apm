@@ -558,8 +558,7 @@ KNOWN_TARGETS: dict[str, TargetProfile] = {
     # Cline VS Code extension -- comprehensive customization support.
     # Project scope: .clinerules/ (rules), .cline/skills/ (skills),
     #                .clinerules/workflows/ (workflows), .clinerules/hooks/ (hooks)
-    # User scope: ~/Documents/Cline/{Rules,Workflows,Hooks} (Windows/macOS)
-    #             or ~/Cline/{Rules,Workflows,Hooks} (Linux fallback)
+    # User scope: ~/Documents/Cline/{Rules,Workflows,Hooks} (cross-platform)
     #             ~/.cline/skills/ (cross-platform for skills)
     # Rules: plain Markdown files in .clinerules/ root
     # Workflows: Markdown files in .clinerules/workflows/ (treated as agents)
@@ -649,41 +648,36 @@ def _resolve_cline_global_root() -> "Path | None":
     """Resolve Cline's global configuration directory for user-scope deployment.
 
     Cline supports per-primitive global paths:
-    - Rules: ~/Documents/Cline/Rules (Windows/macOS) or ~/Cline/Rules (Linux)
-    - Workflows: ~/Documents/Cline/Workflows (Windows/macOS) or ~/Cline/Workflows (Linux)
-    - Hooks: ~/Documents/Cline/Hooks (Windows/macOS) or ~/Cline/Hooks (Linux)
+    - Rules: ~/Documents/Cline/Rules (cross-platform)
+    - Workflows: ~/Documents/Cline/Workflows (cross-platform)
+    - Hooks: ~/Documents/Cline/Hooks (cross-platform)
     - Skills: ~/.cline/skills (cross-platform, handled separately by integrators)
 
-    This resolver returns the base directory (~/Documents/Cline or ~/Cline).
+    This resolver returns the base directory (~/Documents/Cline).
     Integrators (InstructionIntegrator, AgentIntegrator, HookIntegrator) use this
     as a reference and route to appropriate subdirectories.
     SkillIntegrator always uses ~/.cline/skills regardless of this resolver.
 
     Returns:
-        Path to ~/Documents/Cline (Windows/macOS) or ~/Cline (Linux), or None
-        if neither exists and cannot be created.
+        Path to ~/Documents/Cline, or None if it cannot be determined.
     """
     from pathlib import Path
 
     home = Path.home()
 
-    # Try Documents/Cline first (Windows/macOS convention)
+    # Cline uses ~/Documents/Cline cross-platform
     docs_cline = home / "Documents" / "Cline"
     if docs_cline.exists():
         return docs_cline
 
-    # Fallback to ~/Cline (Linux convention)
-    cline = home / "Cline"
-    if cline.exists():
-        return cline
-
-    # Prefer Documents if available, else fall back to ~/Cline (even if not yet created)
-    # This matches Cline's own detection logic
+    # Return path even if not yet created; integrators will create on demand
     docs = home / "Documents"
     if docs.exists():
-        return docs_cline  # Return path even if not yet created; integrators will create on demand
+        return docs_cline
     
-    return cline  # Linux fallback
+    # Fallback: create Documents/Cline path even if Documents doesn't exist
+    # (integrators will create the directory structure on demand)
+    return docs_cline
 
 
 def _is_flag_enabled(flag_name: str) -> bool:
@@ -794,14 +788,21 @@ def active_targets_user_scope(
 
     # --- auto-detect by directory presence at ~/ ---
     # Targets with detect_by_dir=False (cowork) are never auto-detected.
-    detected = [
-        p
-        for p in KNOWN_TARGETS.values()
-        if p.user_supported
-        and p.detect_by_dir
-        and _flag_gated(p)
-        and (home / p.effective_root(user_scope=True)).is_dir()
-    ]
+    detected = []
+    for p in KNOWN_TARGETS.values():
+        if not (p.user_supported and p.detect_by_dir and _flag_gated(p)):
+            continue
+        # Cline at user scope uses two locations:
+        # - ~/.cline/ for skills
+        # - ~/Documents/Cline/ for agents, instructions, hooks
+        # Check both to detect Cline deployments at user scope.
+        if p.name == "cline":
+            cline_skills_dir = home / ".cline"
+            cline_docs_dir = home / "Documents" / "Cline"
+            if cline_skills_dir.is_dir() or cline_docs_dir.is_dir():
+                detected.append(p)
+        elif (home / p.effective_root(user_scope=True)).is_dir():
+            detected.append(p)
     if detected:
         return detected
 
