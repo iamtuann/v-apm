@@ -176,7 +176,8 @@ class BaseIntegrator:
                             if mapping.deploy_root:
                                 continue  # Skip primitives with deploy_root (e.g., skills)
                             effective_root = t.resolved_deploy_root.relative_to(Path.home())
-                            prefix = f"~/{effective_root}/"
+                            prefix = f"~/{effective_root.as_posix()}/"
+
                             if mapping.subdir:
                                 prefix = f"~/{effective_root}/{mapping.subdir}/"
                             if rel_path.startswith(prefix):
@@ -198,7 +199,7 @@ class BaseIntegrator:
                         # - hooks -> Hooks
                         # Skills use deploy_root=".cline"
                         if t.name == "cline":
-                            effective_root = t.resolved_deploy_root.relative_to(Path.home())
+                            effective_root = t.resolved_deploy_root.relative_to(Path.home()).as_posix()
                             if prim_name == "instructions":
                                 prefix = f"{effective_root}/Rules/"
                                 if rel_path.startswith(prefix):
@@ -318,7 +319,7 @@ class BaseIntegrator:
                             skill_prefixes.append(prefix)
                     elif prim_name == "hooks":
                         # Cline hooks at user scope use "Hooks" (capital H)
-                        effective_root = target.resolved_deploy_root.relative_to(Path.home())
+                        effective_root = target.resolved_deploy_root.relative_to(Path.home()).as_posix()
                         if target.name == "cline":
                             prefix = f"{effective_root}/Hooks/"
                         else:
@@ -326,7 +327,7 @@ class BaseIntegrator:
                         hook_prefixes.append(prefix)
                     else:
                         # Other primitives (instructions, agents) for Cline at user scope
-                        effective_root = target.resolved_deploy_root.relative_to(Path.home())
+                        effective_root = target.resolved_deploy_root.relative_to(Path.home()).as_posix()
                         # Cline uses hardcoded subdirs at user scope:
                         # - instructions -> Rules
                         # - agents -> Workflows
@@ -633,7 +634,7 @@ class BaseIntegrator:
                         for t in targets:
                             if t.resolved_deploy_root is not None:
                                 # Check paths under resolved_deploy_root (e.g., Documents/Cline/)
-                                effective_root = t.resolved_deploy_root.relative_to(Path.home())
+                                effective_root = t.resolved_deploy_root.relative_to(Path.home()).as_posix()
                                 if rel_path.startswith(f"{effective_root}/"):
                                     target = Path.home() / rel_path
                                     _is_home_relative = True

@@ -211,7 +211,8 @@ class InstructionIntegrator(BaseIntegrator):
         legacy_dir = project_root / effective_root / mapping.subdir
         if target.name == "cline" and target.resolved_deploy_root is not None:
             cline_rules_dir = target.resolved_deploy_root / "Rules"
-            prefix = f"{portable_relpath(cline_rules_dir, project_root).rstrip('/')}/"
+            home_rel = cline_rules_dir.relative_to(Path.home())
+            prefix = f"{home_rel.as_posix()}/"
             legacy_dir = cline_rules_dir
         if mapping.format_id == "cursor_rules":
             legacy_pattern = "*.mdc"

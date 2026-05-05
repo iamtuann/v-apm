@@ -226,7 +226,8 @@ class AgentIntegrator(BaseIntegrator):
         legacy_dir = project_root / effective_root / mapping.subdir
         if target.name == "cline" and target.resolved_deploy_root is not None:
             workflows_dir = target.resolved_deploy_root / "Workflows"
-            prefix = f"{portable_relpath(workflows_dir, project_root).rstrip('/')}/"
+            home_rel = workflows_dir.relative_to(Path.home())
+            prefix = f"{home_rel.as_posix()}/"
             legacy_dir = workflows_dir
         # Copilot uses .agent.md suffix; others use plain .md
         legacy_pattern = "*-apm.agent.md" if mapping.extension == ".agent.md" else "*-apm.md"
