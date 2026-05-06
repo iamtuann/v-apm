@@ -54,6 +54,11 @@ class DependencyReference:
     is_insecure: bool = False  # True when the dependency URL uses http://
     allow_insecure: bool = False  # True if this HTTP dep is explicitly allowed
 
+    # HTTP archive/directory dependency fields
+    is_http_archive: bool = False  # True when downloading from HTTP archive (.zip, .tar.gz, etc.)
+    is_http_directory: bool = False  # True when downloading from HTTP directory listing
+    http_url: str | None = None  # Original HTTP URL for archive/directory downloads
+
     # SKILL_BUNDLE subset selection (persisted in apm.yml `skills:` field)
     skill_subset: list[str] | None = None  # Sorted skill names, or None = all
 
@@ -194,6 +199,7 @@ class DependencyReference:
         - Virtual paths are appended              ->  owner/repo/path/to/thing
         - Refs are appended with #                ->  owner/repo#v1.0
         - Local paths are returned as-is          ->  ./packages/my-pkg
+        - HTTP archives/directories return original URL ->  http://server/package.zip
 
         No .git suffix, no git@, and no transport scheme -- just the canonical
         identifier. Use ``to_apm_yml_entry()`` when the serialized apm.yml value
@@ -204,6 +210,10 @@ class DependencyReference:
         """
         if self.is_local and self.local_path:
             return self.local_path
+
+        # For HTTP archive/directory downloads, return the original URL directly
+        if (self.is_http_archive or self.is_http_directory) and self.http_url:
+            return self.http_url
 
         host = self.host or default_host()
 
@@ -1015,6 +1025,23 @@ class DependencyReference:
                 return art_result[0]
         return None
 
+    # HTTP archive extensions that indicate a download (not a Git repo)
+    HTTP_ARCHIVE_EXTENSIONS = ('.zip', '.tar.gz', '.tgz', '.tar.bz2', '.tar.xz')
+
+    @classmethod
+    def _is_http_archive_url(cls, url: str) -> bool:
+        """Check if URL points to an HTTP archive file (not a Git repo).
+        
+        Args:
+            url: URL to check
+            
+        Returns:
+            True if URL is HTTP/HTTPS and ends with an archive extension
+        """
+        if not url.lower().startswith(('http://', 'https://')):
+            return False
+        return any(url.lower().endswith(ext) for ext in cls.HTTP_ARCHIVE_EXTENSIONS)
+
     @classmethod
     def parse(cls, dependency_str: str) -> "DependencyReference":
         """Parse a dependency string into a DependencyReference.
@@ -1033,6 +1060,8 @@ class DependencyReference:
         - https://gitlab.com/owner/repo.git (generic HTTPS git URL)
         - git@gitlab.com:owner/repo.git (SSH git URL)
         - ssh://git@gitlab.com/owner/repo.git (SSH protocol URL)
+        - http://server/package.zip (HTTP archive download)
+        - http://server/package/ (HTTP directory listing)
 
         - ./local/path (local filesystem path)
         - /absolute/path (local filesystem path)
@@ -1057,6 +1086,35 @@ class DependencyReference:
 
         if any(ord(c) < 32 for c in dependency_str):
             raise ValueError("Dependency string contains invalid control characters")
+
+        # --- HTTP archive/directory detection ---
+        # HTTP URLs that end with archive extensions or don't look like Git repos
+        # are treated as direct downloads, not Git clones.
+        stripped = dependency_str.strip()
+        if stripped.lower().startswith(('http://', 'https://')):
+            is_archive = cls._is_http_archive_url(stripped)
+            # Parse the URL to extract package name
+            parsed = urllib.parse.urlparse(stripped)
+            path = parsed.path.rstrip('/')
+            pkg_name = Path(path).stem if path else "package"
+            # Remove archive extension from name if present
+            for ext in cls.HTTP_ARCHIVE_EXTENSIONS:
+                if pkg_name.lower().endswith(ext.replace('.', '')):
+                    pkg_name = pkg_name[:-len(ext.replace('.', ''))]
+                    break
+            
+            # Generate a unique repo_url for the HTTP package
+            repo_url = f"_http/{parsed.netloc}/{pkg_name}"
+            
+            return cls(
+                repo_url=repo_url,
+                host=parsed.netloc,
+                explicit_scheme="http" if stripped.lower().startswith('http://') else "https",
+                is_insecure=stripped.lower().startswith('http://'),
+                is_http_archive=is_archive,
+                is_http_directory=not is_archive,
+                http_url=stripped,
+            )
 
         # --- Local path detection (must run before URL/host parsing) ---
         if cls.is_local_path(dependency_str):
@@ -1139,6 +1197,7 @@ class DependencyReference:
     def to_apm_yml_entry(self):
         """Return the entry to store in apm.yml.
 
+        For HTTP archive/directory deps, returns the original http_url.
         For HTTP (insecure) deps, returns a dict with 'git' and 'allow_insecure' keys.
         For deps with skill_subset, returns a dict with 'git' and 'skills' keys.
         For all other deps, returns the canonical string (same as to_canonical()).
@@ -1146,6 +1205,10 @@ class DependencyReference:
         Returns:
             str or dict: String for simple deps; dict for HTTP or skill-subset deps.
         """
+        # For HTTP archive/directory downloads, return the original URL directly
+        if (self.is_http_archive or self.is_http_directory) and self.http_url:
+            return self.http_url
+        
         if self.is_insecure:
             host = self.host or default_host()
             entry = {"git": f"http://{host}/{self.repo_url}"}
@@ -1170,12 +1233,17 @@ class DependencyReference:
     def to_github_url(self) -> str:
         """Convert to full repository URL.
 
+        For HTTP archives/directories, returns the original http_url.
         For Azure DevOps, generates: https://dev.azure.com/org/project/_git/repo
         For GitHub, generates: https://github.com/owner/repo
         For local packages, returns the local path.
         """
         if self.is_local and self.local_path:
             return self.local_path
+
+        # For HTTP archive/directory downloads, return the original URL directly
+        if (self.is_http_archive or self.is_http_directory) and self.http_url:
+            return self.http_url
 
         host = self.host or default_host()
         netloc = f"{host}:{self.port}" if self.port else host

@@ -45,6 +45,11 @@ class LockedDependency:
     is_insecure: bool = False  # True when the locked source was http://
     allow_insecure: bool = False  # True when the manifest explicitly allowed HTTP
     skill_subset: list[str] = field(default_factory=list)  # Sorted skill names for SKILL_BUNDLE
+    
+    # HTTP archive/directory download fields
+    is_http_archive: bool = False  # True when downloaded from HTTP archive (.zip, .tar.gz, etc.)
+    is_http_directory: bool = False  # True when downloaded from HTTP directory listing
+    http_url: str | None = None  # Original HTTP URL for archive/directory downloads
 
     def get_unique_key(self) -> str:
         """Returns unique key for this dependency."""
@@ -101,6 +106,12 @@ class LockedDependency:
             result["allow_insecure"] = True
         if self.skill_subset:
             result["skill_subset"] = sorted(self.skill_subset)
+        if self.is_http_archive:
+            result["is_http_archive"] = True
+        if self.is_http_directory:
+            result["is_http_directory"] = True
+        if self.http_url:
+            result["http_url"] = self.http_url
         return result
 
     @classmethod
@@ -155,6 +166,9 @@ class LockedDependency:
             is_insecure=data.get("is_insecure", False),
             allow_insecure=data.get("allow_insecure", False),
             skill_subset=list(data.get("skill_subset") or []),
+            is_http_archive=data.get("is_http_archive", False),
+            is_http_directory=data.get("is_http_directory", False),
+            http_url=data.get("http_url"),
         )
 
     @classmethod
@@ -206,6 +220,9 @@ class LockedDependency:
             skill_subset=sorted(dep_ref.skill_subset)
             if isinstance(getattr(dep_ref, "skill_subset", None), list)
             else [],
+            is_http_archive=getattr(dep_ref, "is_http_archive", False),
+            is_http_directory=getattr(dep_ref, "is_http_directory", False),
+            http_url=getattr(dep_ref, "http_url", None),
         )
 
     def to_dependency_ref(self) -> DependencyReference:
@@ -222,6 +239,9 @@ class LockedDependency:
             local_path=self.local_path,
             is_insecure=self.is_insecure,
             allow_insecure=self.allow_insecure,
+            is_http_archive=self.is_http_archive,
+            is_http_directory=self.is_http_directory,
+            http_url=self.http_url,
         )
 
 

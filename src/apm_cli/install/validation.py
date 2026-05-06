@@ -156,6 +156,23 @@ def _validate_package_exists(package, verbose=False, auth_resolver=None, logger=
 
         dep_ref = DependencyReference.parse(package)
 
+        # For HTTP archive/directory packages, validate URL is accessible
+        if dep_ref.is_http_archive or dep_ref.is_http_directory:
+            if not dep_ref.http_url:
+                return False
+            try:
+                # For HTTP archives, do a HEAD request to check if URL is accessible
+                response = requests.head(dep_ref.http_url, timeout=10, allow_redirects=True)
+                if response.status_code < 400:
+                    return True
+                if logger:
+                    logger.warning(f"HTTP package returned status {response.status_code}")
+                return False
+            except requests.RequestException as e:
+                if logger:
+                    logger.warning(f"Failed to access HTTP package: {e}")
+                return False
+
         # For local packages, validate directory exists and has valid package content
         if dep_ref.is_local and dep_ref.local_path:
             local = Path(dep_ref.local_path).expanduser()

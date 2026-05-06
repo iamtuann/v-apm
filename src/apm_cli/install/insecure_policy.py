@@ -197,6 +197,10 @@ def _check_insecure_dependencies(deps, allow_insecure_flag: bool, logger, /) -> 
     1. The dep entry in apm.yml must have allow_insecure: true
     2. --allow-insecure must be set for this install invocation
 
+    HTTP archive/directory downloads are exempt from this policy check since
+    they are explicit downloads (not insecure git clones) and the user has
+    already consented by providing an HTTP URL.
+
     Args:
         deps: List of DependencyReference objects to check.
         allow_insecure_flag: True if --allow-insecure was passed on the command line.
@@ -204,6 +208,14 @@ def _check_insecure_dependencies(deps, allow_insecure_flag: bool, logger, /) -> 
     for dep in deps:
         dep_is_insecure = getattr(dep, "is_insecure", False) is True
         if not dep_is_insecure:
+            continue
+        
+        # Skip HTTP archive/directory downloads - they are explicit downloads,
+        # not insecure git clones, so the two-step consent is not required.
+        is_http_download = getattr(dep, "is_http_archive", False) or getattr(
+            dep, "is_http_directory", False
+        )
+        if is_http_download:
             continue
         url = _get_insecure_dependency_url(dep)
         dep_allow_insecure = getattr(dep, "allow_insecure", False) is True

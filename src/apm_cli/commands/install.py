@@ -389,7 +389,13 @@ def _resolve_package_references(
                 logger.validation_fail(package, reason)
             continue
 
-        if dep_ref.is_insecure:
+        # HTTP archive/directory downloads are explicit downloads, not insecure git clones.
+        # They should be allowed with just --allow-insecure flag (no apm.yml consent needed).
+        is_http_download = getattr(dep_ref, "is_http_archive", False) or getattr(
+            dep_ref, "is_http_directory", False
+        )
+        
+        if dep_ref.is_insecure and not is_http_download:
             if not allow_insecure:
                 # The reason string embeds the full URL already, so skip
                 # logger.validation_fail (which prepends "{package} -- ") to

@@ -2092,6 +2092,10 @@ class GitHubPackageDownloader:
             except ValueError as e:
                 raise ValueError(f"Invalid repository reference '{repo_ref}': {e}")  # noqa: B904
 
+        # Handle HTTP archive/directory downloads (not Git repos)
+        if dep_ref.is_http_archive or dep_ref.is_http_directory:
+            return self._download_from_http(dep_ref, target_path, verbose_callback)
+
         # Handle virtual packages differently
         if dep_ref.is_virtual:
             art_proxy = self._parse_artifactory_base_url()
@@ -2362,3 +2366,95 @@ class GitHubPackageDownloader:
                 print(f"\r Cloning: {message} ({cur_count})", end="", flush=True)
 
         return progress_callback
+
+    def _download_from_http(
+        self,
+        dep_ref: DependencyReference,
+        target_path: Path,
+        verbose_callback=None,
+    ) -> PackageInfo:
+        """Download a package from HTTP URL (archive or directory listing).
+
+        Handles:
+        - HTTP archives: .zip, .tar.gz, .tgz, .tar.bz2, .tar.xz
+        - HTTP directory listings: python3 -m http.server style
+
+        Args:
+            dep_ref: Dependency reference with http_url set
+            target_path: Local path where package should be extracted
+            verbose_callback: Optional callable for verbose logging
+
+        Returns:
+            PackageInfo: Information about the downloaded package
+
+        Raises:
+            RuntimeError: If download or validation fails
+        """
+        from .http_downloader import download_from_http
+
+        if not dep_ref.http_url:
+            raise ValueError("HTTP dependency missing http_url")
+
+        http_url = dep_ref.http_url
+
+        if verbose_callback:
+            verbose_callback(f"Downloading from HTTP: {http_url}")
+
+        # Create target directory
+        target_path.mkdir(parents=True, exist_ok=True)
+
+        # If directory exists and has content, remove it
+        if target_path.exists() and any(target_path.iterdir()):
+            _rmtree(target_path)
+            target_path.mkdir(parents=True, exist_ok=True)
+
+        try:
+            # Download and extract
+            extracted_path = download_from_http(http_url, target_path)
+
+            if verbose_callback:
+                if dep_ref.is_http_archive:
+                    verbose_callback(f"Extracted archive to {extracted_path}")
+                else:
+                    verbose_callback(f"Downloaded directory to {extracted_path}")
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to download from {http_url}: {e}") from e
+
+        # Validate the downloaded package
+        validation_result = validate_apm_package(target_path)
+        if not validation_result.is_valid:
+            # Clean up on validation failure
+            if target_path.exists():
+                shutil.rmtree(target_path, ignore_errors=True)
+
+            error_msg = f"Invalid APM package from {http_url}:\n"
+            for error in validation_result.errors:
+                error_msg += f"  - {error}\n"
+            raise RuntimeError(error_msg.strip())
+
+        # Load the APM package metadata
+        if not validation_result.package:
+            raise RuntimeError(
+                f"Package validation succeeded but no package metadata found for {http_url}"
+            )
+
+        package = validation_result.package
+        package.source = http_url
+
+        # Create resolved reference (no git commit for HTTP downloads)
+        resolved_ref = ResolvedReference(
+            original_ref=http_url,
+            ref_type=GitReferenceType.BRANCH,  # Placeholder
+            resolved_commit=None,
+            ref_name="downloaded",
+        )
+
+        return PackageInfo(
+            package=package,
+            install_path=target_path,
+            resolved_reference=resolved_ref,
+            installed_at=datetime.now().isoformat(),
+            dependency_ref=dep_ref,
+            package_type=validation_result.package_type,
+        )
