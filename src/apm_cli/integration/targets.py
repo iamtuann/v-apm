@@ -753,7 +753,7 @@ def active_targets_user_scope(
        function does not silently fall back when given unknown tokens.
     2. **Directory detection**: profiles whose ``effective_root(user_scope=True)``
        directory exists under ``~/``.
-    3. **Fallback**: ``[copilot]`` -- same default as project scope.
+    3. **Fallback**: ``[cline]`` -- same default as project scope.
     """
     from pathlib import Path
 
@@ -806,8 +806,8 @@ def active_targets_user_scope(
     if detected:
         return detected
 
-    # --- fallback: copilot is the universal default ---
-    return [KNOWN_TARGETS["copilot"]]
+    # --- fallback: cline is the universal default ---
+    return [KNOWN_TARGETS["cline"]]
 
 
 def active_targets(
@@ -827,7 +827,7 @@ def active_targets(
        to ``[copilot]``.
     2. **Directory detection**: profiles whose ``root_dir`` already
        exists under *project_root*.
-    3. **Fallback**: when nothing is detected, returns ``[copilot]``
+    3. **Fallback**: when nothing is detected, returns ``[cline]``
        so greenfield projects get a default skills root.
 
     Args:
@@ -872,8 +872,8 @@ def active_targets(
     if detected:
         return detected
 
-    # --- fallback: copilot is the universal default ---
-    return [KNOWN_TARGETS["copilot"]]
+    # --- fallback: cline is the universal default ---
+    return [KNOWN_TARGETS["cline"]]
 
 
 def resolve_targets(
