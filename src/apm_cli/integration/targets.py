@@ -804,6 +804,11 @@ def active_targets_user_scope(
         elif (home / p.effective_root(user_scope=True)).is_dir():
             detected.append(p)
     if detected:
+        # When multiple targets are detected, prioritize cline to ensure
+        # consistent behavior between workspace and global scope installations
+        cline_targets = [p for p in detected if p.name == "cline"]
+        if cline_targets:
+            return cline_targets
         return detected
 
     # --- fallback: cline is the universal default ---
@@ -870,6 +875,11 @@ def active_targets(
         if p.detect_by_dir and _flag_gated(p) and (root / p.root_dir).is_dir()
     ]
     if detected:
+        # When multiple targets are detected, prioritize cline to ensure
+        # consistent behavior between workspace and global scope installations
+        cline_targets = [p for p in detected if p.name == "cline"]
+        if cline_targets:
+            return cline_targets
         return detected
 
     # --- fallback: cline is the universal default ---
