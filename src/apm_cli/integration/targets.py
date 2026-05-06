@@ -571,7 +571,7 @@ KNOWN_TARGETS: dict[str, TargetProfile] = {
             "instructions": PrimitiveMapping(
                 "", ".md", "cline_rules"
             ),
-            "agents": PrimitiveMapping(
+            "workflows": PrimitiveMapping(
                 "workflows", ".md", "cline_workflow",
                 deploy_root=".clinerules"
             ),

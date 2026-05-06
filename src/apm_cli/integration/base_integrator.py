@@ -195,7 +195,7 @@ class BaseIntegrator:
                     for prim_name, mapping in t.primitives.items():
                         # Cline uses hardcoded subdirs at user scope, regardless of deploy_root:
                         # - instructions -> Rules
-                        # - agents -> Workflows
+                        # - workflows -> Workflows
                         # - hooks -> Hooks
                         # Skills use deploy_root=".cline"
                         if t.name == "cline":
@@ -204,7 +204,7 @@ class BaseIntegrator:
                                 prefix = f"{effective_root}/Rules/"
                                 if rel_path.startswith(prefix):
                                     return True
-                            elif prim_name == "agents":
+                            elif prim_name == "workflows":
                                 prefix = f"{effective_root}/Workflows/"
                                 if rel_path.startswith(prefix):
                                     return True
@@ -326,15 +326,15 @@ class BaseIntegrator:
                             prefix = f"{effective_root}/{mapping.subdir}/" if mapping.subdir else f"{effective_root}/"
                         hook_prefixes.append(prefix)
                     else:
-                        # Other primitives (instructions, agents) for Cline at user scope
+                        # Other primitives (instructions, workflows) for Cline at user scope
                         effective_root = target.resolved_deploy_root.relative_to(Path.home()).as_posix()
                         # Cline uses hardcoded subdirs at user scope:
                         # - instructions -> Rules
-                        # - agents -> Workflows
+                        # - workflows -> Workflows
                         if target.name == "cline":
                             if prim_name == "instructions":
                                 prefix = f"{effective_root}/Rules/"
-                            elif prim_name == "agents":
+                            elif prim_name == "workflows":
                                 prefix = f"{effective_root}/Workflows/"
                             else:
                                 prefix = f"{effective_root}/{mapping.subdir}/" if mapping.subdir else f"{effective_root}/"
@@ -443,13 +443,13 @@ class BaseIntegrator:
                             if p.startswith(f"{effective_root}/"):
                                 # Find the matching primitive for this path
                                 for prim_name, mapping in t.primitives.items():
-                                    # For Cline at user scope, agents and hooks have deploy_root
+                                    # For Cline at user scope, workflows and hooks have deploy_root
                                     # set to .clinerules but are deployed to Documents/Cline/
                                     # Check the Cline hardcoded subdirs first
                                     if t.name == "cline":
                                         if prim_name == "instructions":
                                             prefix = f"{effective_root}/Rules/"
-                                        elif prim_name == "agents":
+                                        elif prim_name == "workflows":
                                             prefix = f"{effective_root}/Workflows/"
                                         elif prim_name == "hooks":
                                             prefix = f"{effective_root}/Hooks/"

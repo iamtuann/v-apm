@@ -132,6 +132,7 @@ def integrate_package_primitives(
     result = {
         "prompts": 0,
         "agents": 0,
+        "workflows": 0,
         "skills": 0,
         "sub_skills": 0,
         "instructions": 0,
@@ -218,6 +219,7 @@ def integrate_package_primitives(
     _INTEGRATOR_KWARGS = {
         "prompts": prompt_integrator,
         "agents": agent_integrator,
+        "workflows": None,  # WorkflowIntegrator instantiated lazily
         "commands": command_integrator,
         "instructions": instruction_integrator,
         "hooks": hook_integrator,
@@ -229,10 +231,19 @@ def integrate_package_primitives(
     # Structure: { prim_name: {"files": int, "label": str, "paths": [str]} }
     _per_kind: dict[str, dict[str, Any]] = {}
 
+    # Lazy-instantiate WorkflowIntegrator (not passed as parameter)
+    _workflow_integrator = None
+
     for _prim_name, _entry in _dispatch.items():
         if _entry.multi_target:
             continue  # skills handled separately
         _integrator = _INTEGRATOR_KWARGS[_prim_name]
+        if _integrator is None and _prim_name == "workflows":
+            from apm_cli.integration.workflow_integrator import WorkflowIntegrator
+            _integrator = WorkflowIntegrator()
+            _workflow_integrator = _integrator
+        if _integrator is None:
+            continue
         _agg_files = 0
         _agg_paths: list[str] = []
         _label = _prim_name
@@ -261,13 +272,13 @@ def integrate_package_primitives(
             if _target.resolved_deploy_root is not None:
                 # Cline at user scope uses hardcoded subdirs:
                 # - instructions -> Rules
-                # - agents -> Workflows
+                # - workflows -> Workflows
                 # - hooks -> Hooks
                 if _target.name == "cline":
                     _rel_path = _target.resolved_deploy_root.relative_to(Path.home())
                     if _prim_name == "instructions":
                         _deploy_dir = f"~/{_rel_path}/Rules/"
-                    elif _prim_name == "agents":
+                    elif _prim_name == "workflows":
                         _deploy_dir = f"~/{_rel_path}/Workflows/"
                     elif _prim_name == "hooks":
                         _deploy_dir = f"~/{_rel_path}/Hooks/"
