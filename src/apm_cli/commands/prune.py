@@ -13,6 +13,7 @@ from ..core.command_logger import CommandLogger
 from ..deps.lockfile import LockFile, get_lockfile_path
 from ..models.apm_package import APMPackage
 from ..utils.path_security import PathTraversalError, safe_rmtree  # noqa: F401
+from .deps._utils import update_primitives_snapshot
 from ._helpers import (
     _build_expected_install_paths,
     _expand_with_ancestors,
@@ -160,6 +161,10 @@ def prune(ctx, dry_run):
         # Final summary
         if removed_count > 0:
             logger.success(f"Pruned {removed_count} orphaned package(s)")
+            try:
+                update_primitives_snapshot(Path.cwd())
+            except Exception as exc:
+                logger.warning(f"Could not update primitives snapshot: {exc}")
         else:
             logger.warning("No packages were removed")
 

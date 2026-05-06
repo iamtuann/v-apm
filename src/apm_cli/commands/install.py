@@ -93,6 +93,7 @@ from ._helpers import (
     _get_default_config,
     _update_gitignore_for_apm_modules,  # noqa: F401
 )
+from .deps._utils import update_primitives_snapshot
 
 # ---------------------------------------------------------------------------
 # Manifest snapshot + rollback (W2-pkg-rollback, #827)
@@ -1388,6 +1389,12 @@ def install(  # noqa: PLR0913
             force=force,
             elapsed_seconds=time.perf_counter() - install_started_at,
         )
+        try:
+            update_primitives_snapshot(
+                project_root if scope is InstallScope.PROJECT else None
+            )
+        except Exception as exc:
+            logger.warning(f"Could not update primitives snapshot: {exc}")
         summary_rendered = True
 
     except InsecureDependencyPolicyError:

@@ -18,6 +18,7 @@ from .engine import (
     _sync_integrations_after_uninstall,
     _validate_uninstall_packages,
 )
+from ..deps._utils import update_primitives_snapshot
 
 
 @click.command(help="Remove APM packages, their integrated files, and apm.yml entries")
@@ -240,6 +241,15 @@ def uninstall(ctx, packages, dry_run, verbose, global_):
 
         if packages_not_found:
             logger.warning(f"Note: {len(packages_not_found)} package(s) were not found in apm.yml")
+
+        try:
+            # Rebuild snapshot after uninstall - removed packages won't be in the scan anymore
+            if scope is InstallScope.PROJECT:
+                update_primitives_snapshot(project_root)
+            else:
+                update_primitives_snapshot(None)
+        except Exception as exc:
+            logger.warning(f"Could not update primitives snapshot: {exc}")
 
     except Exception as e:
         logger.error(f"Error uninstalling packages: {e}")

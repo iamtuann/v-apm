@@ -1,6 +1,7 @@
 """Tests for apm deps list, tree, and info subcommands."""
 
 import contextlib
+import json
 import os
 import sys
 import tempfile
@@ -218,8 +219,96 @@ class TestDepsListCommand(_DepsCmdBase):
         assert result.exit_code == 0
         assert "insecureorg/insecurerepo" in result.output
         assert "safeorg/saferepo" not in result.output
+
+    def test_export_primitives_writes_json_for_project_and_global_scopes(self):
+        """Export installed primitives from both project and user scopes."""
+        from apm_cli.core.scope import InstallScope
+
+        with self._chdir_tmp() as tmp:
+            project_dir = tmp / "project"
+            user_dir = tmp / "user"
+            project_dir.mkdir()
+            user_dir.mkdir()
+
+            (project_dir / "apm.yml").write_text("name: workspace1\nversion: 1.0.0\n")
+            project_pkg = project_dir / "apm_modules" / "projorg" / "projrepo"
+            project_pkg.mkdir(parents=True)
+            (project_pkg / "apm.yml").write_text(
+                "name: projrepo\nversion: 1.0.0\nbpId: project-id\n"
+            )
+            (project_pkg / ".apm" / "skills" / "skill-one").mkdir(parents=True)
+            (project_pkg / ".apm" / "skills" / "skill-one" / "SKILL.md").write_text("---\nname: skill-one\n---\n")
+
+            user_pkg = user_dir / "apm_modules" / "globorg" / "globrepo"
+            user_pkg.mkdir(parents=True)
+            (user_pkg / "apm.yml").write_text(
+                "name: globrepo\nversion: 1.0.0\nbpId: global-id\n"
+            )
+            (user_pkg / ".apm" / "agents").mkdir(parents=True)
+            (user_pkg / ".apm" / "agents" / "workflow-one.agent.md").write_text("---\n")
+
+            def fake_get_apm_dir(scope):
+                return user_dir if scope == InstallScope.USER else project_dir
+
+            with patch("apm_cli.core.scope.get_apm_dir", side_effect=fake_get_apm_dir), patch(
+                "apm_cli.core.scope.ensure_user_dirs", return_value=user_dir
+            ):
+                result = self.runner.invoke(cli, ["deps", "export-primitives", "--all"])
+
+        assert result.exit_code == 0
+        output_path = user_dir / "primitives.json"
+        assert output_path.exists()
+
+        content = json.loads(output_path.read_text(encoding="utf-8"))
+        assert content["global"]["workflows"]["workflow-one"] == "global-id"
+        assert content["workspace1"]["skills"]["skill-one"] == "project-id"
         assert "Origin" in result.output
         assert "direct" in result.output
+
+    def test_update_primitives_snapshot_writes_to_user_apm_dir(self):
+        from apm_cli.commands.deps._utils import update_primitives_snapshot
+        from apm_cli.core.scope import InstallScope
+
+        with self._chdir_tmp() as tmp:
+            project_dir = tmp / "project"
+            user_dir = tmp / "user"
+            project_dir.mkdir()
+            user_dir.mkdir()
+
+            project_pkg = project_dir / "apm_modules" / "projorg" / "projrepo"
+            project_pkg.mkdir(parents=True)
+            (project_pkg / "apm.yml").write_text(
+                "name: projrepo\nversion: 1.0.0\nbpId: project-id\n"
+            )
+            (project_pkg / ".apm" / "skills" / "skill-one").mkdir(parents=True)
+            (project_pkg / ".apm" / "skills" / "skill-one" / "SKILL.md").write_text("---\nname: skill-one\n---\n")
+
+            user_pkg = user_dir / "apm_modules" / "globorg" / "globrepo"
+            user_pkg.mkdir(parents=True)
+            (user_pkg / "apm.yml").write_text(
+                "name: globrepo\nversion: 1.0.0\nbpId: global-id\n"
+            )
+            (user_pkg / ".apm" / "agents").mkdir(parents=True)
+            (user_pkg / ".apm" / "agents" / "workflow-one.agent.md").write_text("---\n")
+
+            def fake_get_modules_dir(scope):
+                return user_dir / "apm_modules" if scope == InstallScope.USER else project_dir / "apm_modules"
+
+            with patch(
+                "apm_cli.commands.deps._utils.ensure_user_dirs",
+                return_value=user_dir,
+            ), patch(
+                "apm_cli.commands.deps._utils.get_modules_dir",
+                side_effect=fake_get_modules_dir,
+            ):
+                output_path = update_primitives_snapshot(project_dir)
+
+            assert output_path == user_dir / "primitives.json"
+            assert output_path.exists()
+
+            content = json.loads(output_path.read_text(encoding="utf-8"))
+            assert content["global"]["workflows"]["workflow-one"] == "global-id"
+            assert content["project"]["skills"]["skill-one"] == "project-id"
 
     def test_list_insecure_shows_transitive_provenance(self):
         """--insecure shows which parent introduced a transitive HTTP dep."""

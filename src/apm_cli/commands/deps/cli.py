@@ -1,5 +1,6 @@
 """APM dependency management CLI commands."""
 
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -14,6 +15,7 @@ from ...core.target_detection import TargetParamType
 from ...models.apm_package import APMPackage, ValidationResult, validate_apm_package  # noqa: F401
 from .._helpers import _expand_with_ancestors, _standalone_installed_packages
 from ._utils import (
+    _build_scope_primitives,
     _count_package_files,  # noqa: F401
     _count_primitives,
     _count_workflows,  # noqa: F401
@@ -21,6 +23,8 @@ from ._utils import (
     _get_detailed_package_info,  # noqa: F401
     _get_package_display_info,
     _is_nested_under_package,
+    _scan_installed_package_paths,
+    _workspace_key,
 )
 
 # ---------------------------------------------------------------------------
@@ -441,6 +445,63 @@ def list_packages(global_, show_all, insecure_only):
             )
     except Exception as e:
         logger.error(f"Error listing dependencies: {e}")
+        sys.exit(1)
+
+
+@deps.command(name="export-primitives", help="Export installed primitive names and bpIds to ~/.apm/primitives.json")
+@click.option(
+    "--global",
+    "-g",
+    "global_",
+    is_flag=True,
+    default=False,
+    help="Include user-scope dependencies (~/.apm/) instead of project.",
+)
+@click.option(
+    "--all",
+    "show_all",
+    is_flag=True,
+    default=False,
+    help="Include both project and user-scope dependencies.",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    default=None,
+    help="Path to write the JSON file. Defaults to ~/.apm/primitives.json.",
+)
+def export_primitives(global_, show_all, output):
+    """Export installed primitives and bpIds to a JSON file."""
+    logger = CommandLogger("deps-export-primitives")
+    try:
+        from ...core.scope import InstallScope, ensure_user_dirs, get_apm_dir, get_modules_dir
+
+        if output:
+            output_path = Path(output).expanduser()
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            output_path = ensure_user_dirs() / "primitives.json"
+
+        scopes: list[tuple[InstallScope, str]] = []
+        if show_all or not global_:
+            scopes.append((InstallScope.PROJECT, _workspace_key(get_apm_dir(InstallScope.PROJECT))))
+        if show_all or global_:
+            scopes.append((InstallScope.USER, "global"))
+
+        primitives_export: dict[str, dict[str, dict[str, str]]] = {}
+        for scope, section_name in scopes:
+            apm_dir = get_apm_dir(scope)
+            modules_dir = get_modules_dir(scope)
+            package_paths = _scan_installed_package_paths(modules_dir)
+            primitives_export[section_name] = _build_scope_primitives(package_paths, modules_dir)
+
+        with open(output_path, "w", encoding="utf-8") as handle:
+            json.dump(primitives_export, handle, indent=2)
+
+        logger.success(f"Exported primitive metadata to {output_path}")
+    except Exception as e:
+        logger.error(f"Error exporting primitives: {e}")
         sys.exit(1)
 
 

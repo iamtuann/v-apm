@@ -1,10 +1,13 @@
 """Utility helpers for APM dependency commands."""
 
+import json
 from pathlib import Path
 from typing import Any, Dict  # noqa: F401, UP035
 
 from ...constants import APM_DIR, APM_YML_FILENAME, SKILL_MD_FILENAME
+from ...core.scope import InstallScope, ensure_user_dirs, get_modules_dir
 from ...models.apm_package import APMPackage
+from ...utils.yaml_io import load_yaml
 
 
 def _scan_installed_packages(apm_modules_dir: Path) -> list:
@@ -28,6 +31,207 @@ def _scan_installed_packages(apm_modules_dir: Path) -> list:
         if len(rel_parts) >= 2:
             installed.append("/".join(rel_parts))
     return installed
+
+
+def _scan_installed_package_paths(apm_modules_dir: Path) -> list[Path]:
+    """Scan *apm_modules_dir* for installed package root directories."""
+    installed: list[Path] = []
+    if not apm_modules_dir.exists():
+        return installed
+
+    for candidate in sorted(apm_modules_dir.rglob("*")):
+        if not candidate.is_dir() or candidate.name.startswith("."):
+            continue
+
+        has_apm_yml = (candidate / APM_YML_FILENAME).exists()
+        has_skill_md = (candidate / SKILL_MD_FILENAME).exists()
+        if not has_apm_yml and not has_skill_md:
+            continue
+
+        rel_parts = candidate.relative_to(apm_modules_dir).parts
+        if len(rel_parts) < 2:
+            continue
+
+        if ".apm" in rel_parts:
+            continue
+
+        if has_skill_md and not has_apm_yml and _is_nested_under_package(candidate, apm_modules_dir):
+            continue
+
+        installed.append(candidate)
+    return installed
+
+
+def _get_package_bp_id(package_path: Path, apm_modules_dir: Path | None = None) -> str:
+    """Return the package bpId from apm.yml, or a fallback identifier."""
+    apm_yml_path = package_path / APM_YML_FILENAME
+    if apm_yml_path.exists():
+        try:
+            data = load_yaml(apm_yml_path)
+            if isinstance(data, dict) and isinstance(data.get("bpId"), str):
+                return data["bpId"]
+        except Exception:
+            pass
+
+    if apm_modules_dir is not None:
+        try:
+            return package_path.relative_to(apm_modules_dir).as_posix()
+        except Exception:
+            pass
+
+    return package_path.name
+
+
+def _get_package_primitives(package_path: Path) -> dict[str, list[str]]:
+    """Return primitive names grouped by type for a package.
+    
+    Scans for primitives that will be deployed to Cline.
+    """
+    primitives = {"skills": [], "rules": [], "workflows": [], "hooks": []}
+    apm_dir = package_path / APM_DIR
+
+    if apm_dir.exists():
+        # Skills: .apm/skills/<name>/SKILL.md
+        skills_path = apm_dir / "skills"
+        if skills_path.exists() and skills_path.is_dir():
+            for child in sorted(skills_path.iterdir()):
+                if child.is_dir() and (child / SKILL_MD_FILENAME).exists():
+                    primitives["skills"].append(child.name)
+
+        # Rules/Instructions: .apm/instructions/*.instructions.md
+        instructions_path = apm_dir / "instructions"
+        if instructions_path.exists() and instructions_path.is_dir():
+            for instruction_file in sorted(instructions_path.glob("*.instructions.md")):
+                primitives["rules"].append(instruction_file.stem)
+
+        # Workflows/Agents: .apm/agents/*.agent.md
+        agents_path = apm_dir / "agents"
+        if agents_path.exists() and agents_path.is_dir():
+            for agent_file in sorted(agents_path.glob("*.agent.md")):
+                primitives["workflows"].append(agent_file.stem)
+
+        # Hooks in .apm/hooks/*.json
+        hooks_path = apm_dir / "hooks"
+        if hooks_path.exists() and hooks_path.is_dir():
+            for hook_file in sorted(hooks_path.glob("*.json")):
+                hook_name = hook_file.stem
+                if hook_name not in primitives["hooks"]:
+                    primitives["hooks"].append(hook_name)
+
+    # Root-level SKILL.md
+    if (package_path / SKILL_MD_FILENAME).exists():
+        skill_name = package_path.name
+        if skill_name not in primitives["skills"]:
+            primitives["skills"].append(skill_name)
+
+    # Root-level hooks/*.json
+    hooks_root = package_path / "hooks"
+    if hooks_root.exists() and hooks_root.is_dir():
+        for hook_file in sorted(hooks_root.glob("*.json")):
+            hook_name = hook_file.stem
+            if hook_name not in primitives["hooks"]:
+                primitives["hooks"].append(hook_name)
+
+    return primitives
+
+
+def _build_scope_primitives(package_paths: list[Path], apm_modules_dir: Path) -> dict[str, dict[str, str]]:
+    """Build a JSON-friendly primitive map for a scope."""
+    result = {"skills": {}, "rules": {}, "workflows": {}, "hooks": {}}
+    for package_path in package_paths:
+        bp_id = _get_package_bp_id(package_path, apm_modules_dir)
+        package_primitives = _get_package_primitives(package_path)
+        for primitive_type, names in package_primitives.items():
+            for name in names:
+                if name not in result[primitive_type]:
+                    result[primitive_type][name] = bp_id
+    return result
+
+
+def _workspace_key(project_root: Path) -> str:
+    """Compute the workspace key from a project root or fallback to directory name."""
+    try:
+        apm_yml_path = project_root / APM_YML_FILENAME
+        if apm_yml_path.exists():
+            package = APMPackage.from_apm_yml(apm_yml_path)
+            if package.name:
+                return package.name
+    except Exception:
+        pass
+    if project_root.name == "global":
+        return f"workspace-{project_root.name}"
+    return project_root.name
+
+
+def _remove_from_primitives_snapshot(removed_packages: list[str], scope: InstallScope = InstallScope.PROJECT) -> Path:
+    """Remove package entries from the primitives snapshot JSON.
+    
+    Args:
+        removed_packages: List of package keys (e.g., "org/repo") to remove
+        scope: PROJECT or USER scope
+    
+    Returns:
+        Path to the updated JSON file
+    """
+    output_path = ensure_user_dirs() / "primitives.json"
+    if not output_path.exists():
+        return output_path
+    
+    try:
+        snapshot = json.loads(output_path.read_text(encoding="utf-8"))
+        if not isinstance(snapshot, dict):
+            return output_path
+    except Exception:
+        return output_path
+    
+    # Get the workspace key for this scope
+    if scope is InstallScope.PROJECT:
+        workspace_key = _workspace_key(Path.cwd())
+    else:
+        workspace_key = "global"
+    
+    # Remove primitives from packages that were uninstalled
+    if workspace_key in snapshot:
+        scope_data = snapshot[workspace_key]
+        for primitive_type in ["skills", "rules", "workflows", "hooks"]:
+            if primitive_type in scope_data:
+                # Remove entries whose bpId matches removed packages
+                to_remove = []
+                for prim_name, bp_id in scope_data[primitive_type].items():
+                    if bp_id in removed_packages:
+                        to_remove.append(prim_name)
+                for prim_name in to_remove:
+                    del scope_data[primitive_type][prim_name]
+    
+    output_path.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8")
+    return output_path
+
+
+def update_primitives_snapshot(project_root: Path | None = None) -> Path:
+    """Write installed primitive metadata to ~/.apm/primitives.json."""
+    output_path = ensure_user_dirs() / "primitives.json"
+    snapshot: dict[str, Any] = {}
+    if output_path.exists():
+        try:
+            snapshot = json.loads(output_path.read_text(encoding="utf-8"))
+            if not isinstance(snapshot, dict):
+                snapshot = {}
+        except Exception:
+            snapshot = {}
+
+    if project_root is not None:
+        snapshot[_workspace_key(project_root)] = _build_scope_primitives(
+            _scan_installed_package_paths(get_modules_dir(InstallScope.PROJECT)),
+            get_modules_dir(InstallScope.PROJECT),
+        )
+
+    snapshot["global"] = _build_scope_primitives(
+        _scan_installed_package_paths(get_modules_dir(InstallScope.USER)),
+        get_modules_dir(InstallScope.USER),
+    )
+
+    output_path.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8")
+    return output_path
 
 
 def _is_nested_under_package(candidate: Path, apm_modules_path: Path) -> bool:

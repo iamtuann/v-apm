@@ -175,6 +175,77 @@ class TestInstallCommandAutoBootstrap:
                 assert config["name"] == "test-project"
                 assert config["author"] == "Test Author"
 
+    @patch("apm_cli.commands.install.update_primitives_snapshot")
+    @patch("apm_cli.commands.install._install_apm_dependencies")
+    @patch("apm_cli.commands.install.APMPackage")
+    @patch("apm_cli.commands.install._validate_package_exists")
+    @patch("apm_cli.commands.install.APM_DEPS_AVAILABLE", True)
+    def test_install_updates_primitives_snapshot_on_success(
+        self, mock_validate, mock_apm_package, mock_install_apm, mock_update_snapshot
+    ):
+        """Installing packages should update the Cline primitives snapshot."""
+        with self._chdir_tmp() as tmp_dir:
+            mock_validate.return_value = True
+
+            mock_pkg_instance = MagicMock()
+            mock_pkg_instance.get_apm_dependencies.return_value = [
+                MagicMock(repo_url="test/package", reference="main")
+            ]
+            mock_pkg_instance.get_mcp_dependencies.return_value = []
+            mock_apm_package.from_apm_yml.return_value = mock_pkg_instance
+
+            mock_install_apm.return_value = InstallResult(
+                diagnostics=MagicMock(has_diagnostics=False, has_critical_security=False)
+            )
+
+            result = self.runner.invoke(cli, ["install", "test/package"])
+            assert result.exit_code == 0
+            mock_update_snapshot.assert_called_once_with(Path(tmp_dir))
+
+    def test_uninstall_updates_primitives_snapshot_on_success(self):
+        """Uninstalling packages updates the Cline primitives snapshot."""
+        with self._chdir_tmp() as tmp_dir:
+            apm_yml = tmp_dir / "apm.yml"
+            apm_yml.write_text(
+                "name: test-project\nversion: 1.0.0\ndependencies:\n  apm:\n    - test/package\n  mcp: []\n",
+                encoding="utf-8",
+            )
+
+            with patch("apm_cli.commands.uninstall.cli._validate_uninstall_packages") as mock_validate, patch(
+                "apm_cli.commands.uninstall.cli._remove_packages_from_disk"
+            ) as mock_remove, patch(
+                "apm_cli.commands.uninstall.cli._cleanup_transitive_orphans"
+            ) as mock_cleanup_transitive, patch(
+                "apm_cli.commands.uninstall.cli._sync_integrations_after_uninstall"
+            ) as mock_sync, patch(
+                "apm_cli.commands.uninstall.cli._cleanup_stale_mcp"
+            ) as mock_cleanup_mcp, patch(
+                "apm_cli.commands.uninstall.cli.update_primitives_snapshot"
+            ) as mock_update_snapshot, patch(
+                "apm_cli.deps.lockfile.LockFile.read"
+            ) as mock_lockfile_read, patch(
+                "apm_cli.deps.lockfile.get_lockfile_path",
+                return_value=tmp_dir / "apm.lock.yaml",
+            ):
+                mock_validate.return_value = (["test/package"], [])
+                mock_remove.return_value = 1
+                mock_cleanup_transitive.return_value = (0, [])
+                mock_sync.return_value = {
+                    "prompts": 0,
+                    "agents": 0,
+                    "skills": 0,
+                    "commands": 0,
+                    "hooks": 0,
+                    "instructions": 0,
+                }
+                mock_cleanup_mcp.return_value = None
+                mock_lockfile_read.return_value = MagicMock(mcp_servers=[], dependencies={})
+
+                result = self.runner.invoke(cli, ["uninstall", "test/package"])
+
+            assert result.exit_code == 0
+            mock_update_snapshot.assert_called_once_with(Path(tmp_dir))
+
     @patch("apm_cli.commands.install._validate_package_exists")
     @patch("apm_cli.commands.install.APM_DEPS_AVAILABLE", True)
     @patch("apm_cli.commands.install.APMPackage")
