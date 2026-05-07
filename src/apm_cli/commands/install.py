@@ -698,6 +698,7 @@ def _handle_mcp_install(
     logger,
     no_policy,
     validated_registry_url,
+    explicit_target=None,
 ):
     """Execute the ``--mcp`` install path (MCP server add).
 
@@ -789,6 +790,7 @@ def _handle_mcp_install(
         apm_dir=mcp_apm_dir,
         scope=mcp_scope,
         registry_url=validated_registry_url,
+        explicit_target=explicit_target,
     )
 
 
@@ -1232,6 +1234,7 @@ def install(  # noqa: PLR0913
                 logger=logger,
                 no_policy=no_policy,
                 validated_registry_url=validated_registry_url,
+                explicit_target=target,
             )
             return
 

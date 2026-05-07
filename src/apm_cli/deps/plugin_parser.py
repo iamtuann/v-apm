@@ -261,7 +261,12 @@ def _read_mcp_file(plugin_path: Path, rel_path: str, logger: logging.Logger) -> 
 
 
 def _read_mcp_json(path: Path, logger: logging.Logger) -> dict[str, Any]:
-    """Parse a JSON file and return the ``mcpServers`` mapping."""
+    """Parse a JSON file and return the ``mcpServers`` mapping.
+    
+    Handles both dict form {"mcpServers": {"name": {...}}} and 
+    list form {"mcpServers": [{"name": "x", ...}]}.
+    Returns a dict mapping server name -> server config.
+    """
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
@@ -270,7 +275,26 @@ def _read_mcp_json(path: Path, logger: logging.Logger) -> dict[str, Any]:
     if not isinstance(data, dict):
         return {}
     servers = data.get("mcpServers", {})
-    return dict(servers) if isinstance(servers, dict) else {}
+    
+    # Handle dict form: {"name": {...}}
+    if isinstance(servers, dict):
+        return dict(servers)
+    
+    # Handle list form: [{"name": "x", ...}]
+    if isinstance(servers, list):
+        result = {}
+        for server_cfg in servers:
+            if not isinstance(server_cfg, dict):
+                continue
+            server_name = server_cfg.get("name")
+            if not server_name:
+                continue
+            # Remove 'name' from the config since it becomes the key
+            cfg_copy = {k: v for k, v in server_cfg.items() if k != "name"}
+            result[server_name] = cfg_copy
+        return result
+    
+    return {}
 
 
 def _substitute_plugin_root(

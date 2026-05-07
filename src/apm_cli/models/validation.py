@@ -27,6 +27,7 @@ class PackageType(Enum):
     HYBRID = "hybrid"  # Has both apm.yml and SKILL.md (root)
     MARKETPLACE_PLUGIN = "marketplace_plugin"  # Has plugin.json or .claude-plugin/
     SKILL_BUNDLE = "skill_bundle"  # Has skills/<name>/SKILL.md (nested), apm.yml optional
+    MCP_PACKAGE = "mcp_package"  # Has .mcp.json only, no apm.yml or other markers
     INVALID = "invalid"  # None of the above
 
 
@@ -164,6 +165,7 @@ class DetectionEvidence:
     has_claude_plugin_dir: bool = False
     nested_skill_dirs: tuple[str, ...] = ()
     has_plugin_manifest: bool = False
+    has_mcp_json: bool = False  # .mcp.json at package root
 
     @property
     def has_plugin_evidence(self) -> bool:
@@ -203,6 +205,11 @@ def gather_detection_evidence(package_path: Path) -> DetectionEvidence:
             if d.is_dir() and (d / SKILL_MD_FILENAME).exists()
         )
 
+    # Check for .mcp.json at package root (or .github/.mcp.json)
+    has_mcp_json = (package_path / ".mcp.json").exists() or (
+        package_path / ".github" / ".mcp.json"
+    ).exists()
+
     return DetectionEvidence(
         has_apm_yml=(package_path / APM_YML_FILENAME).exists(),
         has_skill_md=(package_path / SKILL_MD_FILENAME).exists(),
@@ -212,6 +219,7 @@ def gather_detection_evidence(package_path: Path) -> DetectionEvidence:
         has_claude_plugin_dir=has_claude_plugin_dir,
         nested_skill_dirs=nested_skill_dirs,
         has_plugin_manifest=has_plugin_manifest,
+        has_mcp_json=has_mcp_json,
     )
 
 
@@ -278,7 +286,11 @@ def detect_package_type(
     if evidence.has_hook_json:
         return PackageType.HOOK_PACKAGE, None
 
-    # 7. Nothing recognisable -> INVALID
+    # 7. .mcp.json only -> MCP_PACKAGE
+    if evidence.has_mcp_json:
+        return PackageType.MCP_PACKAGE, None
+
+    # 8. Nothing recognisable -> INVALID
     return PackageType.INVALID, None
 
 
@@ -398,6 +410,10 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
     # Handle Skill Bundles (nested skills/<name>/SKILL.md)
     if result.package_type == PackageType.SKILL_BUNDLE:
         return _validate_skill_bundle(package_path, result)
+
+    # Handle MCP-only packages (.mcp.json only, no apm.yml or other markers)
+    if result.package_type == PackageType.MCP_PACKAGE:
+        return _validate_mcp_package(package_path, result)
 
     # Standard APM package or HYBRID validation (has apm.yml)
     apm_yml_path = package_path / APM_YML_FILENAME
@@ -675,6 +691,66 @@ def _validate_hybrid_package(
 
     result.package = package
     # package_type already set to HYBRID by the caller
+    return result
+
+
+def _validate_mcp_package(package_path: Path, result: ValidationResult) -> ValidationResult:
+    """Validate an MCP-only package and create APMPackage from .mcp.json.
+
+    An MCP package has only .mcp.json (or .github/.mcp.json) defining MCP
+    servers, with no apm.yml, SKILL.md, or other package markers.
+
+    Args:
+        package_path: Path to the package directory
+        result: ValidationResult to populate
+
+    Returns:
+        ValidationResult: Updated validation result
+    """
+    import json as _json
+
+    from .apm_package import APMPackage
+
+    package_name = package_path.name
+
+    # Find the .mcp.json file
+    mcp_json_path = package_path / ".mcp.json"
+    if not mcp_json_path.exists():
+        mcp_json_path = package_path / ".github" / ".mcp.json"
+
+    if not mcp_json_path.exists():
+        result.add_error(f"MCP package missing .mcp.json file")
+        return result
+
+    # Parse .mcp.json to validate it has mcpServers
+    try:
+        data = _json.loads(mcp_json_path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            result.add_error(".mcp.json must contain a JSON object")
+            return result
+
+        servers = data.get("mcpServers", {})
+        if not isinstance(servers, dict) or not servers:
+            result.add_error(".mcp.json must contain 'mcpServers' with at least one server")
+            return result
+
+    except _json.JSONDecodeError as e:
+        result.add_error(f"Invalid JSON in .mcp.json: {e}")
+        return result
+    except Exception as e:
+        result.add_error(f"Failed to read .mcp.json: {e}")
+        return result
+
+    # Create APMPackage from directory name
+    package = APMPackage(
+        name=package_name,
+        version="0.0.0",
+        description=f"MCP package: {package_name}",
+        package_path=package_path,
+        type=PackageContentType.HYBRID,
+    )
+    result.package = package
+
     return result
 
 

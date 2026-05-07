@@ -111,13 +111,22 @@ class MCPIntegrator:
         if locked_paths is not None:
             apm_yml_paths = [path for path in sorted(locked_paths) if path.exists()]
         else:
-            apm_yml_paths = apm_modules_dir.rglob("apm.yml")
+            apm_yml_paths = list(apm_modules_dir.rglob("apm.yml"))
 
         collected = []
+        processed_dirs: builtins.set = builtins.set()  # Track processed package dirs
+
         for apm_yml_path in apm_yml_paths:
+            package_dir = apm_yml_path.parent
+            processed_dirs.add(package_dir.resolve())
             try:
                 pkg = APMPackage.from_apm_yml(apm_yml_path)
                 mcp = pkg.get_mcp_dependencies()
+                
+                # Fallback: check for .mcp.json if no MCP deps in apm.yml
+                if not mcp:
+                    mcp = MCPIntegrator._collect_mcp_from_mcp_json(package_dir, logger)
+                
                 if mcp:
                     is_direct = apm_yml_path.resolve() in direct_paths
                     for dep in mcp:
@@ -150,6 +159,55 @@ class MCPIntegrator:
                     exc_info=True,
                 )
                 continue
+
+        # Also scan for .mcp.json files in packages without apm.yml
+        # This handles MCP-only packages (MCP_PACKAGE type)
+        for mcp_json_path in apm_modules_dir.rglob(".mcp.json"):
+            package_dir = mcp_json_path.parent
+            # Skip if already processed (has apm.yml)
+            if package_dir.resolve() in processed_dirs:
+                continue
+            # Skip .github/.mcp.json (handled by parent directory check)
+            if package_dir.name == ".github":
+                continue
+                
+            mcp = MCPIntegrator._collect_mcp_from_mcp_json(package_dir, logger)
+            if mcp:
+                # Use directory name as package name for MCP-only packages
+                pkg_name = package_dir.name
+                # For lockfile-based runs, check if this package is direct
+                is_direct = False
+                if lockfile:
+                    for dep in lockfile.get_package_dependencies():
+                        if dep.repo_url and dep.repo_url.endswith(pkg_name):
+                            if dep.depth == 1:
+                                is_direct = True
+                            break
+                
+                for dep in mcp:
+                    if hasattr(dep, "is_self_defined") and dep.is_self_defined:
+                        if is_direct:
+                            logger.progress(
+                                f"Trusting direct dependency MCP '{dep.name}' from '{pkg_name}'"
+                            )
+                        elif trust_private:
+                            logger.progress(
+                                f"Trusting self-defined MCP server '{dep.name}' "
+                                f"from transitive package '{pkg_name}' (--trust-transitive-mcp)"
+                            )
+                        else:
+                            _trust_msg = (
+                                f"Transitive package '{pkg_name}' declares self-defined "
+                                f"MCP server '{dep.name}' (registry: false). "
+                                f"Re-declare it in your apm.yml or use --trust-transitive-mcp."
+                            )
+                            if diagnostics:
+                                diagnostics.warn(_trust_msg)
+                            else:
+                                logger.warning(_trust_msg)
+                            continue
+                    collected.append(dep)
+
         return collected
 
     # ------------------------------------------------------------------
@@ -180,6 +238,135 @@ class MCPIntegrator:
                 seen_names.add(name)
                 result.append(dep)
         return result
+
+    @staticmethod
+    def _collect_mcp_from_mcp_json(package_dir: Path, logger) -> list:
+        """Collect MCP dependencies from .mcp.json file.
+
+        Reads .mcp.json (or .github/.mcp.json) and converts servers
+        to MCPDependency objects.
+
+        Args:
+            package_dir: Path to the package directory
+            logger: Logger instance
+
+        Returns:
+            List of MCPDependency objects from .mcp.json
+        """
+        import json as _json
+
+        from apm_cli.models.dependency.mcp import MCPDependency
+
+        # Find the .mcp.json file
+        mcp_json_path = package_dir / ".mcp.json"
+        if not mcp_json_path.exists():
+            mcp_json_path = package_dir / ".github" / ".mcp.json"
+
+        if not mcp_json_path.exists():
+            return []
+
+        try:
+            data = _json.loads(mcp_json_path.read_text(encoding="utf-8"))
+        except (_json.JSONDecodeError, OSError) as exc:
+            _log.debug("Failed to read MCP config %s: %s", mcp_json_path, exc)
+            return []
+
+        if not isinstance(data, dict):
+            return []
+
+        servers = data.get("mcpServers", {})
+        
+        # Handle both dict and list forms of mcpServers
+        if isinstance(servers, list):
+            # List form: [{"name": "server1", "command": "..."}]
+            deps = []
+            for server_cfg in servers:
+                if not isinstance(server_cfg, dict):
+                    continue
+                server_name = server_cfg.get("name")
+                if not server_name:
+                    continue
+                # Build MCPDependency from server config
+                dep_dict: dict = {"name": server_name, "registry": False}
+
+                if "command" in server_cfg:
+                    dep_dict["transport"] = "stdio"
+                    dep_dict["command"] = server_cfg["command"]
+                    if "args" in server_cfg:
+                        dep_dict["args"] = server_cfg["args"]
+                elif "url" in server_cfg:
+                    dep_dict["transport"] = server_cfg.get("type", "http")
+                    dep_dict["url"] = server_cfg["url"]
+                    if "headers" in server_cfg:
+                        dep_dict["headers"] = server_cfg["headers"]
+                else:
+                    continue
+
+                if "env" in server_cfg:
+                    dep_dict["env"] = server_cfg["env"]
+                if "tools" in server_cfg:
+                    dep_dict["tools"] = server_cfg["tools"]
+
+                try:
+                    deps.append(MCPDependency.from_dict(dep_dict))
+                except (ValueError, Exception):
+                    _log.debug(
+                        "Skipping invalid MCP server '%s' from %s",
+                        server_name,
+                        mcp_json_path,
+                        exc_info=True,
+                    )
+                    continue
+
+            if deps:
+                _log.debug("Loaded %d MCP server(s) from %s", len(deps), mcp_json_path)
+            return deps
+
+        if not isinstance(servers, dict):
+            return []
+
+        deps = []
+        for server_name, server_cfg in servers.items():
+            if not isinstance(server_cfg, dict):
+                continue
+
+            # Build MCPDependency from server config
+            dep_dict: dict = {"name": server_name, "registry": False}
+
+            if "command" in server_cfg:
+                dep_dict["transport"] = "stdio"
+                dep_dict["command"] = server_cfg["command"]
+                if "args" in server_cfg:
+                    dep_dict["args"] = server_cfg["args"]
+            elif "url" in server_cfg:
+                dep_dict["transport"] = server_cfg.get("type", "http")
+                dep_dict["url"] = server_cfg["url"]
+                if "headers" in server_cfg:
+                    dep_dict["headers"] = server_cfg["headers"]
+            else:
+                # Skip invalid server (no command or url)
+                continue
+
+            if "env" in server_cfg:
+                dep_dict["env"] = server_cfg["env"]
+            if "tools" in server_cfg:
+                dep_dict["tools"] = server_cfg["tools"]
+
+            try:
+                deps.append(MCPDependency.from_dict(dep_dict))
+            except (ValueError, Exception):
+                _log.debug(
+                    "Skipping invalid MCP server '%s' from %s",
+                    server_name,
+                    mcp_json_path,
+                    exc_info=True,
+                )
+                continue
+
+        if deps:
+            _log.debug("Loaded %d MCP server(s) from %s", len(deps), mcp_json_path)
+
+        return deps
 
     # ------------------------------------------------------------------
     # Server info helpers
@@ -661,6 +848,33 @@ class MCPIntegrator:
                         exc_info=True,
                     )
 
+        # Clean Cline MCP settings (VS Code globalStorage path)
+        if "cline" in target_runtimes:
+            from apm_cli.adapters.client.cline import _get_cline_mcp_settings_path
+
+            cline_mcp = _get_cline_mcp_settings_path()
+            if cline_mcp.exists():
+                try:
+                    import json as _json
+
+                    config = _json.loads(cline_mcp.read_text(encoding="utf-8"))
+                    servers = config.get("mcpServers", {})
+                    removed = [n for n in expanded_stale if n in servers]
+                    for name in removed:
+                        del servers[name]
+                    if removed:
+                        cline_mcp.write_text(_json.dumps(config, indent=2), encoding="utf-8")
+                        for name in removed:
+                            _rich_success(
+                                f"Removed stale MCP server '{name}' from Cline config",
+                                symbol="check",
+                            )
+                except Exception:
+                    _log.debug(
+                        "Failed to clean stale MCP servers from Cline config",
+                        exc_info=True,
+                    )
+
         # Clean .gemini/settings.json (only if .gemini/ directory exists)
         if "gemini" in target_runtimes:
             gemini_cfg = Path.cwd() / ".gemini" / "settings.json"
@@ -1061,9 +1275,13 @@ class MCPIntegrator:
 
         # Runtime detection and multi-runtime installation
         if runtime:
-            # Single runtime mode
+            # Single runtime mode (via --runtime flag)
             target_runtimes = [runtime]
             logger.progress(f"Targeting specific runtime: {runtime}")
+        elif explicit_target:
+            # Use explicit target from --target flag or apm.yml
+            target_runtimes = [explicit_target]
+            logger.progress(f"Targeting runtime from --target: {explicit_target}")
         else:
             project_root_path = Path(project_root) if project_root is not None else Path.cwd()
 
@@ -1095,6 +1313,7 @@ class MCPIntegrator:
                     "gemini",
                     "windsurf",
                     "claude",
+                    "cline",
                 ]:
                     try:
                         if runtime_name == "vscode":
@@ -1141,7 +1360,7 @@ class MCPIntegrator:
                         continue
             except ImportError:
                 installed_runtimes = [
-                    rt for rt in ["copilot", "codex"] if shutil.which(rt) is not None
+                    rt for rt in ["copilot", "codex", "cline"] if shutil.which(rt) is not None
                 ]
                 # VS Code: check binary on PATH or .vscode/ directory presence
                 if _is_vscode_available(project_root=project_root_path):
@@ -1262,8 +1481,18 @@ class MCPIntegrator:
                 )
                 logger.warning(msg)
             if not target_runtimes:
+                # Dynamically list runtimes that support user-scope
+                user_scope_runtimes = []
+                for rt in ClientFactory.supported_clients():
+                    try:
+                        client = ClientFactory.create_client(rt)
+                        if client.supports_user_scope:
+                            user_scope_runtimes.append(rt)
+                    except (ValueError, Exception):
+                        continue
+                supported_str = ", ".join(user_scope_runtimes) if user_scope_runtimes else "none"
                 logger.warning(
-                    "No runtimes support user-scope MCP installation (supported: copilot, codex)"
+                    f"No runtimes support user-scope MCP installation (supported: {supported_str})"
                 )
                 return 0
 

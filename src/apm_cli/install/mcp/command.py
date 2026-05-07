@@ -55,6 +55,7 @@ def run_mcp_install(
     apm_dir: Path,
     scope: str | None,
     registry_url: str | None = None,
+    explicit_target: str | None = None,
 ) -> None:
     """Execute the --mcp install path. ``registry_url`` is the validated
     --registry value; the caller resolved precedence vs MCP_REGISTRY_URL."""
@@ -126,6 +127,7 @@ def run_mcp_install(
                     verbose,
                     stored_mcp_configs=old_configs,
                     scope=scope,
+                    explicit_target=explicit_target,
                 )
                 new_names = MCPIntegrator.get_server_names([dep])
                 new_configs = MCPIntegrator.get_server_configs([dep])
